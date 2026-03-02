@@ -55,9 +55,14 @@ export default function StockChart({ symbol, quote, aiHolding }) {
   const fetchCandles = useCallback(async () => {
     if (!symbol) return;
     setLoading(true);
-    const data = await callFinnhub("candles_range", { symbol, range });
-    setCandles(data.candles || []);
-    setLoading(false);
+    try {
+      const data = await callFinnhub("candles_range", { symbol, range });
+      setCandles(data.candles || []);
+    } catch {
+      setCandles([]);
+    } finally {
+      setLoading(false);
+    }
   }, [symbol, range]);
 
   useEffect(() => { fetchCandles(); }, [fetchCandles]);
