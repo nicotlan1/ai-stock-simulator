@@ -28,7 +28,7 @@ export default function Layout({ children, currentPageName }) {
       }
     };
     checkSetup();
-  }, [currentPageName]);
+  }, []);
 
   useEffect(() => {
     const updateTitle = async () => {
