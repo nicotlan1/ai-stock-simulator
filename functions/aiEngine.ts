@@ -374,6 +374,10 @@ async function runAICycle(base44) {
   // 5. STOP-LOSS CHECK on existing holdings ─────────────────────────────────
   for (const holding of holdings) {
     try {
+      // Verify holding still exists before executing stop-loss (prevent double execution)
+      const existingHoldings = await base44.asServiceRole.entities.Holding.list();
+      if (!existingHoldings.find(h => h.id === holding.id)) continue;
+
       const quote = await getQuote(holding.symbol);
       const currentPrice = quote.price;
       const lossPct = (currentPrice - holding.avg_buy_price) / holding.avg_buy_price;
