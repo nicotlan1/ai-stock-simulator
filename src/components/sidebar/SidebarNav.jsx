@@ -3,11 +3,12 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import {
-  Wallet, LayoutDashboard, TrendingUp, Bot, List, Bell, Settings
+  Wallet, LayoutDashboard, TrendingUp, Bot, List, Bell, Settings, Globe
 } from "lucide-react";
 
 const navItems = [
   { name: "Dashboard",      page: "Dashboard",    icon: LayoutDashboard },
+  { name: "Mercado",        page: "Market",       icon: Globe },
   { name: "Billetera",      page: "Wallet",       icon: Wallet },
   { name: "Rendimiento",    page: "Performance",  icon: TrendingUp },
   { name: "Decisiones IA",  page: "AILog",        icon: Bot },
