@@ -369,7 +369,7 @@ async function runAICycleForUser(base44, userEmail) {
 
   // 3a. INITIAL DEPLOYMENT: if this is the first time with capital
   if (config.initial_investment_pending && (wallet.liquid_cash || 0) > 0) {
-    const decisions = await deployCapital(base44, config, wallet, params, stockList, riskLevel, "initial");
+    const decisions = await deployCapital(base44, config, wallet, params, stockList, riskLevel, "initial", userEmail);
 
     await base44.asServiceRole.entities.UserConfig.update(config.id, {
       initial_investment_pending: false,
