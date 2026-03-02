@@ -18,6 +18,7 @@ export default function Layout({ children, currentPageName }) {
 
   // Check if setup is needed
   const [setupDone, setSetupDone] = useState(null);
+  const marketStatus = useMarketStatus();
 
   useEffect(() => {
     const done = localStorage.getItem("ai_stock_setup_done");
