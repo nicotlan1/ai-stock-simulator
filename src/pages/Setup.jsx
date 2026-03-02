@@ -87,7 +87,7 @@ export default function Setup() {
         });
       }
 
-      window.location.href = createPageUrl("Dashboard");
+      navigate(createPageUrl("Dashboard"));
     } catch (err) {
       console.error("Setup error:", err.message);
       setSaving(false);
