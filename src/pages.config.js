@@ -50,12 +50,12 @@
 import AILog from './pages/AILog';
 import Alerts from './pages/Alerts';
 import Dashboard from './pages/Dashboard';
+import Market from './pages/Market';
 import Performance from './pages/Performance';
 import Settings from './pages/Settings';
 import Setup from './pages/Setup';
 import Transactions from './pages/Transactions';
 import Wallet from './pages/Wallet';
-import Market from './pages/Market';
 import __Layout from './Layout.jsx';
 
 
@@ -63,12 +63,12 @@ export const PAGES = {
     "AILog": AILog,
     "Alerts": Alerts,
     "Dashboard": Dashboard,
+    "Market": Market,
     "Performance": Performance,
     "Settings": Settings,
     "Setup": Setup,
     "Transactions": Transactions,
     "Wallet": Wallet,
-    "Market": Market,
 }
 
 export const pagesConfig = {

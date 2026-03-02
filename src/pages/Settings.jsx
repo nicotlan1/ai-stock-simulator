@@ -6,7 +6,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import {
   DollarSign, Target, Shield, TrendingUp, Flame, AlertTriangle,
   RotateCcw, Edit3, Bell, BellOff, Clock, Percent, Zap, CheckCircle,
-  ArrowRight, X
+  ArrowRight, X, Database, CheckCircle2
 } from "lucide-react";
 
 function calcRiskProfile(monthlyReturnPct) {
