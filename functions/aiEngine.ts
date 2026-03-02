@@ -536,7 +536,7 @@ async function runAICycleForUser(base44, userEmail) {
   }
 
   // 7. BUY ANALYSIS on universe (only if under max positions) ───────────────
-  const currentHoldingsAfterSells = await base44.asServiceRole.entities.Holding.list();
+  const currentHoldingsAfterSells = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
   const currentPositions = currentHoldingsAfterSells.length;
 
   // Reload wallet to reflect cash freed by sells in section 6
