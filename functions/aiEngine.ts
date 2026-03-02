@@ -21,9 +21,33 @@ function isMarketOpen() {
   return time >= 570 && time < 960;
 }
 
-async function getCandles(symbol) {
+async function getCandles(symbol, base44Client) {
+  // Primary: use PriceHistory entity (populated by historicalLoader)
+  if (base44Client) {
+    try {
+      const rows = await base44Client.asServiceRole.entities.PriceHistory.filter(
+        { symbol },
+        "-date",
+        130
+      );
+      if (rows && rows.length > 35) {
+        // Build a candle-compatible object using closes sorted oldest→newest
+        const sorted = rows.slice().reverse();
+        return {
+          c: sorted.map(r => r.close),
+          o: sorted.map(r => r.open),
+          h: sorted.map(r => r.high),
+          l: sorted.map(r => r.low),
+          s: "ok"
+        };
+      }
+    } catch (err) {
+      console.warn(`PriceHistory fallback for ${symbol}:`, err.message);
+    }
+  }
+  // Fallback: Finnhub candles
   const to = Math.floor(Date.now() / 1000);
-  const from = to - 35 * 24 * 60 * 60; // 35 days to guarantee 30 trading days
+  const from = to - 35 * 24 * 60 * 60;
   const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}`);
   if (data.s !== "ok" || !data.c || data.c.length < 14) return null;
   return data;
