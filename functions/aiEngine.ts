@@ -729,11 +729,11 @@ async function updatePrices(base44) {
             symbol: holding.symbol,
             message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
             is_read: false,
-            created_by: userEmail
-          })
-        ]);
+            user_id: userEmail
+            })
+            ]);
 
-        if (wallet) {
+            if (wallet) {
           const fwAll = await base44.asServiceRole.entities.Wallet.list();
           const fw = fwAll.find(w => w.created_by === userEmail) || fwAll[0];
           await base44.asServiceRole.entities.Wallet.update(wallet.id, {
