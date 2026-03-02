@@ -55,6 +55,7 @@ import AILog from './pages/AILog';
 import Transactions from './pages/Transactions';
 import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
+import Market from './pages/Market';
 import __Layout from './Layout.jsx';
 
 
@@ -67,6 +68,7 @@ export const PAGES = {
     "Transactions": Transactions,
     "Alerts": Alerts,
     "Settings": Settings,
+    "Market": Market,
 }
 
 export const pagesConfig = {
