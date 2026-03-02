@@ -83,10 +83,19 @@ Deno.serve(async (req) => {
 
     const updated = [];
     const stopped = [];
+    const dailyCloseQuotes = {}; // symbol -> quote, for near-close saves
+
+    const nearClose = isNearMarketClose();
+    const today = todayEST();
+    let existingClosedSymbols = new Set();
+
+    if (nearClose) {
+      const existing = await base44.asServiceRole.entities.PriceHistory.filter({ date: today }, "-date", 200);
+      existingClosedSymbols = new Set(existing.map(r => r.symbol));
+    }
 
     for (const holding of holdings) {
       try {
-        // FIX: verificar que el holding aún existe antes de operar
         if (!activeIds.has(holding.id)) continue;
 
         const quote = await getQuote(holding.symbol);
@@ -124,7 +133,6 @@ Deno.serve(async (req) => {
             })
           ]);
 
-          // FIX: recargar wallet desde DB + actualizar ai_capital
           if (wallet) {
             const fw = (await base44.asServiceRole.entities.Wallet.list())[0];
             await base44.asServiceRole.entities.Wallet.update(wallet.id, {
@@ -143,6 +151,11 @@ Deno.serve(async (req) => {
             unrealized_pnl_pct: lossPct * 100
           });
           updated.push(holding.symbol);
+
+          // Save quote for daily close if near market close
+          if (nearClose) {
+            dailyCloseQuotes[holding.symbol] = quote;
+          }
         }
 
       } catch (err) {
@@ -150,31 +163,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // After market close: persist today's closing prices to PriceHistory
-    let historyAdded = 0;
-    if (isAfterMarketClose()) {
-      const today = todayEST();
-      const freshHoldings = await base44.asServiceRole.entities.Holding.list();
-      // Check which symbols already have today's entry
-      const existing = await base44.asServiceRole.entities.PriceHistory.filter({ date: today }, "-date", 200);
-      const existingSymbols = new Set(existing.map(r => r.symbol));
-
-      for (const h of freshHoldings) {
-        if (existingSymbols.has(h.symbol)) continue;
-        if (!h.current_price) continue;
+    // Near market close: persist today's OHLC to PriceHistory
+    let dailyCloses = 0;
+    if (nearClose && Object.keys(dailyCloseQuotes).length > 0) {
+      for (const [symbol, quote] of Object.entries(dailyCloseQuotes)) {
+        if (existingClosedSymbols.has(symbol)) continue;
         try {
           await base44.asServiceRole.entities.PriceHistory.create({
-            symbol: h.symbol,
+            symbol,
             date: today,
-            open: h.current_price,
-            high: h.current_price,
-            low: h.current_price,
-            close: h.current_price,
-            volume: 0
+            open: quote.open ?? null,
+            high: quote.high ?? null,
+            low: quote.low ?? null,
+            close: quote.price,
+            volume: null
           });
-          historyAdded++;
+          dailyCloses++;
+          await new Promise(resolve => setTimeout(resolve, 300));
         } catch (err) {
-          console.error(`PriceHistory insert failed for ${h.symbol}:`, err.message);
+          console.error(`PriceHistory daily close failed for ${symbol}:`, err.message);
         }
       }
     }
@@ -182,9 +189,9 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       updated: updated.length,
-      stopped: stopped.length,
+      stopLosses: stopped.length,
       stop_losses: stopped,
-      history_added: historyAdded
+      dailyCloses
     });
 
   } catch (error) {
