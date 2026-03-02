@@ -433,14 +433,16 @@ async function runAICycleForUser(base44, userEmail) {
             score_fundamental: 0,
             score_sentiment: 0,
             score_final: 0,
-            executed_at: new Date().toISOString()
+            executed_at: new Date().toISOString(),
+            created_by: userEmail
           }),
           base44.asServiceRole.entities.Holding.delete(holding.id),
           base44.asServiceRole.entities.Alert.create({
             type: "stop_loss",
             symbol: holding.symbol,
             message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
-            is_read: false
+            is_read: false,
+            created_by: userEmail
           })
         ]);
 
@@ -511,14 +513,16 @@ async function runAICycleForUser(base44, userEmail) {
             score_fundamental: 0,
             score_sentiment: Math.round(sentimentScore),
             score_final: Math.round(finalScore),
-            executed_at: new Date().toISOString()
+            executed_at: new Date().toISOString(),
+            created_by: userEmail
           }),
           base44.asServiceRole.entities.Holding.delete(holding.id),
           base44.asServiceRole.entities.Alert.create({
             type: "sell",
             symbol: holding.symbol,
             message: `📤 Venta: ${holding.symbol} a $${currentPrice.toFixed(2)}. P&L: $${realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}. Score: ${finalScore.toFixed(0)}/100`,
-            is_read: false
+            is_read: false,
+            created_by: userEmail
           })
         ]);
 
@@ -596,7 +600,8 @@ async function runAICycleForUser(base44, userEmail) {
               score_fundamental: 0,
               score_sentiment: Math.round(sentimentScore),
               score_final: Math.round(finalScore),
-              executed_at: new Date().toISOString()
+              executed_at: new Date().toISOString(),
+              created_by: userEmail
             }),
             base44.asServiceRole.entities.Holding.create({
               symbol,
@@ -613,7 +618,8 @@ async function runAICycleForUser(base44, userEmail) {
               type: "buy",
               symbol,
               message: `📥 Compra: ${symbol} a $${quote.price.toFixed(2)} — ${shares.toFixed(4)} acciones ($${totalCost.toFixed(2)}). Score: ${finalScore.toFixed(0)}/100`,
-              is_read: false
+              is_read: false,
+              created_by: userEmail
             })
           ]);
 
@@ -710,14 +716,16 @@ async function updatePrices(base44) {
             realized_pnl: realizedPnl,
             ai_reasoning: `STOP-LOSS activado (actualización de precios). Precio $${currentPrice.toFixed(2)} representa ${(lossPct * 100).toFixed(2)}% desde $${holding.avg_buy_price.toFixed(2)}. Límite: -${(params.stopLossPct * 100).toFixed(0)}%.`,
             score_technical: 0, score_fundamental: 0, score_sentiment: 0, score_final: 0,
-            executed_at: new Date().toISOString()
+            executed_at: new Date().toISOString(),
+            created_by: userEmail
           }),
           base44.asServiceRole.entities.Holding.delete(holding.id),
           base44.asServiceRole.entities.Alert.create({
             type: "stop_loss",
             symbol: holding.symbol,
             message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
-            is_read: false
+            is_read: false,
+            created_by: userEmail
           })
         ]);
 
