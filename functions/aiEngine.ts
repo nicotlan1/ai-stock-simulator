@@ -117,7 +117,7 @@ function scoreTechnical(rsi, macd, riskLevel) {
     conservative:     { rsiBuy: 35, rsiSell: 65 },
     moderate:         { rsiBuy: 40, rsiSell: 60 },
     aggressive:       { rsiBuy: 45, rsiSell: 55 },
-    ultra_aggressive: { rsiBuy: 50, rsiSell: 55 }
+    ultra_aggressive: { rsiBuy: 48, rsiSell: 58 }
   };
   const t = thresholds[riskLevel] || thresholds.moderate;
 
