@@ -700,7 +700,7 @@ async function updatePrices(base44) {
 
   const activePriceHoldingIds = new Set(allHoldings.map(h => h.id));
   for (const holding of allHoldings) {
-    const userEmail = holding.created_by;
+    const userEmail = holding.user_id || holding.created_by;
     const config = configByUser[userEmail];
     const wallet = walletByUser[userEmail];
     const riskLevel = config?.risk_level || "moderate";
