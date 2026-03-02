@@ -3,26 +3,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import {
-  Activity,
-  Wallet,
-  Target,
-  ArrowRight,
-  ArrowLeft,
-  DollarSign,
-  TrendingUp,
-  Shield,
-  Flame,
-  AlertTriangle,
-  Zap,
-  Clock,
-  CheckCircle
+  Activity, Wallet, Target, ArrowRight, ArrowLeft,
+  DollarSign, TrendingUp, Shield, Flame, AlertTriangle,
+  Zap, Clock, CheckCircle
 } from "lucide-react";
 
 function calcRiskProfile(monthlyReturnPct) {
-  if (monthlyReturnPct < 5)  return { level: "conservative",   name: "Conservador",     prob: 65, color: "#3b82f6", icon: Shield,    desc: "La IA operará con posiciones pequeñas, stop-loss ajustado y priorizará preservar el capital." };
-  if (monthlyReturnPct < 15) return { level: "moderate",       name: "Moderado",        prob: 35, color: "#fbbf24", icon: TrendingUp, desc: "La IA balanceará riesgo y retorno, abriendo posiciones medianas con análisis técnico y fundamental." };
-  if (monthlyReturnPct < 30) return { level: "aggressive",     name: "Agresivo",        prob: 12, color: "#ff4757", icon: Flame,      desc: "La IA tomará posiciones más grandes y frecuentes buscando rendimientos altos con mayor volatilidad." };
-  return                      { level: "ultra_aggressive",     name: "Ultra Agresivo",  prob: 3,  color: "#ff0000", icon: AlertTriangle, desc: "La IA operará con máximo riesgo. Es posible perder gran parte del capital invertido." };
+  if (monthlyReturnPct < 5)  return { level: "conservative",    name: "Conservador",    prob: 65, color: "#3b82f6", icon: Shield,        desc: "La IA operará con posiciones pequeñas, stop-loss ajustado y priorizará preservar el capital." };
+  if (monthlyReturnPct < 15) return { level: "moderate",        name: "Moderado",       prob: 35, color: "#fbbf24", icon: TrendingUp,    desc: "La IA balanceará riesgo y retorno, abriendo posiciones medianas con análisis técnico y fundamental." };
+  if (monthlyReturnPct < 30) return { level: "aggressive",      name: "Agresivo",       prob: 12, color: "#ff4757", icon: Flame,         desc: "La IA tomará posiciones más grandes y frecuentes buscando rendimientos altos con mayor volatilidad." };
+  return                      { level: "ultra_aggressive",      name: "Ultra Agresivo", prob: 3,  color: "#ff0000", icon: AlertTriangle, desc: "La IA operará con máximo riesgo. Es posible perder gran parte del capital invertido." };
 }
 
 function fmt(n) {
@@ -30,91 +20,83 @@ function fmt(n) {
 }
 
 export default function Setup() {
-  const [step, setStep] = useState(0);
-  const [saving, setSaving] = useState(false);
-
-  // Step 1
+  const [step, setStep]       = useState(0);
+  const [saving, setSaving]   = useState(false);
   const [totalCapital, setTotalCapital] = useState("");
-
-  // Step 2
-  const [aiCapital, setAiCapital] = useState("");
-
-  // Step 3
-  const [goalAmount, setGoalAmount] = useState("");
+  const [aiCapital, setAiCapital]       = useState("");
+  const [goalAmount, setGoalAmount]     = useState("");
   const [deadlineValue, setDeadlineValue] = useState("");
-  const [deadlineUnit, setDeadlineUnit] = useState("months"); // "months" | "days"
+  const [deadlineUnit, setDeadlineUnit]   = useState("months");
 
-  const totalNum    = parseFloat(totalCapital)  || 0;
-  const aiNum       = parseFloat(aiCapital)     || 0;
-  const goalNum     = parseFloat(goalAmount)    || 0;
-  const reserveNum  = totalNum - aiNum;
+  const totalNum   = parseFloat(totalCapital)  || 0;
+  const aiNum      = parseFloat(aiCapital)     || 0;
+  const goalNum    = parseFloat(goalAmount)    || 0;
+  const reserveNum = totalNum - aiNum;
 
-  // Convert deadline to months
-  const deadlineNum   = parseFloat(deadlineValue) || 0;
+  const deadlineNum    = parseFloat(deadlineValue) || 0;
   const deadlineMonths = deadlineUnit === "days" ? deadlineNum / 30 : deadlineNum;
 
-  // Required monthly return (compound interest)
   const requiredMonthlyReturn = deadlineMonths > 0 && aiNum > 0 && goalNum > aiNum
     ? (Math.pow(goalNum / aiNum, 1 / deadlineMonths) - 1) * 100
     : 0;
 
   const riskProfile = calcRiskProfile(requiredMonthlyReturn);
 
-  // Validations per step
   const canGoStep1 = totalNum >= 100;
   const canGoStep2 = aiNum >= 1 && aiNum <= totalNum;
   const canGoStep3 = goalNum >= aiNum * 1.1 && deadlineNum >= 1;
 
   const handleConfirm = async () => {
     setSaving(true);
+    try {
+      const today = new Date().toISOString().split("T")[0];
 
-    const today = new Date().toISOString().split("T")[0];
-
-    // Save UserConfig
-    await base44.entities.UserConfig.create({
-      goal_amount:               goalNum,
-      initial_capital:           aiNum,
-      deadline_months:           deadlineMonths,
-      required_monthly_return:   requiredMonthlyReturn,
-      risk_level:                riskProfile.level,
-      estimated_probability:     riskProfile.prob,
-      start_date:                today,
-      initial_investment_pending: true
-    });
-
-    // Initialize Wallet
-    await base44.entities.Wallet.create({
-      free_balance: reserveNum,
-      ai_capital:   aiNum,
-      liquid_cash:  0,
-      net_worth:    totalNum
-    });
-
-    // Initial WalletMovement — deposit
-    await base44.entities.WalletMovement.create({
-      type:              "deposit",
-      amount:            totalNum,
-      resulting_balance: totalNum,
-      notes:             "Depósito inicial de capital ficticio"
-    });
-
-    // Send to AI movement
-    if (aiNum > 0) {
-      await base44.entities.WalletMovement.create({
-        type:              "send_to_ai",
-        amount:            aiNum,
-        resulting_balance: reserveNum,
-        notes:             "Capital enviado a la IA al iniciar simulación"
+      await base44.entities.UserConfig.create({
+        goal_amount:                goalNum,
+        initial_capital:            aiNum,
+        deadline_months:            deadlineMonths,
+        required_monthly_return:    requiredMonthlyReturn,
+        risk_level:                 riskProfile.level,
+        estimated_probability:      riskProfile.prob,
+        start_date:                 today,
+        initial_investment_pending: true
       });
-    }
 
-    localStorage.setItem("ai_stock_setup_done", "true");
-    window.location.href = createPageUrl("Dashboard");
+      // FIX: nombres de campos correctos según schema de Wallet
+      await base44.entities.Wallet.create({
+        wallet_balance:  reserveNum,
+        ai_capital:      aiNum,
+        liquid_cash:     0,
+        total_net_worth: totalNum
+      });
+
+      await base44.entities.WalletMovement.create({
+        type:              "deposit",
+        amount:            totalNum,
+        resulting_balance: totalNum,
+        notes:             "Depósito inicial de capital ficticio"
+      });
+
+      if (aiNum > 0) {
+        await base44.entities.WalletMovement.create({
+          type:              "send_to_ai",
+          amount:            aiNum,
+          resulting_balance: reserveNum,
+          notes:             "Capital enviado a la IA al iniciar simulación"
+        });
+      }
+
+      // FIX: eliminado localStorage — Layout ya verifica en DB
+      window.location.href = createPageUrl("Dashboard");
+
+    } catch (err) {
+      console.error("Setup error:", err.message);
+      setSaving(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#0a0e1a] flex flex-col items-center justify-center p-6">
-      {/* Logo */}
       <div className="flex items-center gap-3 mb-10">
         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#00ff88] to-[#00cc6a] flex items-center justify-center">
           <Activity className="w-5 h-5 text-[#0a0e1a]" strokeWidth={3} />
@@ -122,7 +104,6 @@ export default function Setup() {
         <span className="text-sm font-bold text-slate-100 tracking-wide">AI STOCK SIMULATOR</span>
       </div>
 
-      {/* Progress bar */}
       {step > 0 && (
         <div className="flex items-center gap-2 mb-10">
           {[1, 2, 3].map((s) => (
@@ -137,10 +118,8 @@ export default function Setup() {
         </div>
       )}
 
-      {/* Steps */}
       <AnimatePresence mode="wait">
 
-        {/* STEP 0 — Welcome */}
         {step === 0 && (
           <motion.div
             key="welcome"
@@ -166,7 +145,6 @@ export default function Setup() {
           </motion.div>
         )}
 
-        {/* STEP 1 — Wallet */}
         {step === 1 && (
           <motion.div
             key="step1"
@@ -177,17 +155,12 @@ export default function Setup() {
               <Wallet className="w-7 h-7 text-[#00ff88]" />
             </div>
             <h2 className="text-2xl font-bold text-white text-center mb-1">Carga tu Billetera</h2>
-            <p className="text-slate-400 text-sm text-center mb-8">
-              ¿Con cuánto dinero ficticio quieres empezar?
-            </p>
-
+            <p className="text-slate-400 text-sm text-center mb-8">¿Con cuánto dinero ficticio quieres empezar?</p>
             <div className="card-terminal p-6 space-y-4">
               <div className="flex items-center gap-3 border border-[#1a2240] rounded-xl px-4 py-3 focus-within:border-[#00ff88]/50 transition-colors">
                 <DollarSign className="w-5 h-5 text-[#00ff88] flex-shrink-0" />
                 <input
-                  type="number"
-                  placeholder="10,000"
-                  value={totalCapital}
+                  type="number" placeholder="10,000" value={totalCapital}
                   onChange={(e) => setTotalCapital(e.target.value)}
                   className="flex-1 bg-transparent text-3xl font-mono font-bold text-white outline-none placeholder-slate-600"
                   min={100}
@@ -196,14 +169,11 @@ export default function Setup() {
               {totalNum > 0 && totalNum < 100 && (
                 <p className="text-xs text-[#ff4757]">Mínimo $100</p>
               )}
-              <p className="text-xs text-slate-500 text-center">
-                💡 Es dinero simulado, no real.
-              </p>
+              <p className="text-xs text-slate-500 text-center">💡 Es dinero simulado, no real.</p>
             </div>
           </motion.div>
         )}
 
-        {/* STEP 2 — Invest */}
         {step === 2 && (
           <motion.div
             key="step2"
@@ -214,28 +184,20 @@ export default function Setup() {
               <TrendingUp className="w-7 h-7 text-[#fbbf24]" />
             </div>
             <h2 className="text-2xl font-bold text-white text-center mb-1">Define cuánto invertir</h2>
-            <p className="text-slate-400 text-sm text-center mb-8">
-              ¿Cuánto de ese dinero le entregas a la IA para invertir?
-            </p>
-
+            <p className="text-slate-400 text-sm text-center mb-8">¿Cuánto de ese dinero le entregas a la IA para invertir?</p>
             <div className="card-terminal p-6 space-y-4">
               <div className="flex items-center gap-3 border border-[#1a2240] rounded-xl px-4 py-3 focus-within:border-[#fbbf24]/50 transition-colors">
                 <DollarSign className="w-5 h-5 text-[#fbbf24] flex-shrink-0" />
                 <input
-                  type="number"
-                  placeholder={`Max $${fmt(totalNum)}`}
-                  value={aiCapital}
+                  type="number" placeholder={`Max $${fmt(totalNum)}`} value={aiCapital}
                   onChange={(e) => setAiCapital(e.target.value)}
                   className="flex-1 bg-transparent text-3xl font-mono font-bold text-white outline-none placeholder-slate-600"
-                  min={1}
-                  max={totalNum}
+                  min={1} max={totalNum}
                 />
               </div>
               {aiNum > totalNum && (
                 <p className="text-xs text-[#ff4757]">No puede superar tu capital total de ${fmt(totalNum)}</p>
               )}
-
-              {/* Live breakdown */}
               {aiNum > 0 && aiNum <= totalNum && (
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <div className="rounded-lg bg-[#fbbf24]/5 border border-[#fbbf24]/20 p-3 text-center">
@@ -252,7 +214,6 @@ export default function Setup() {
           </motion.div>
         )}
 
-        {/* STEP 3 — Goal */}
         {step === 3 && (
           <motion.div
             key="step3"
@@ -263,20 +224,14 @@ export default function Setup() {
               <Target className="w-7 h-7 text-[#3b82f6]" />
             </div>
             <h2 className="text-2xl font-bold text-white text-center mb-1">Define tu Objetivo</h2>
-            <p className="text-slate-400 text-sm text-center mb-8">
-              ¿A cuánto quieres que llegue tu inversión y en cuánto tiempo?
-            </p>
-
+            <p className="text-slate-400 text-sm text-center mb-8">¿A cuánto quieres que llegue tu inversión y en cuánto tiempo?</p>
             <div className="card-terminal p-6 space-y-5">
-              {/* Goal */}
               <div>
                 <label className="text-xs text-slate-400 mb-2 block font-mono">META EN DÓLARES</label>
                 <div className="flex items-center gap-3 border border-[#1a2240] rounded-xl px-4 py-3 focus-within:border-[#3b82f6]/50 transition-colors">
                   <DollarSign className="w-5 h-5 text-[#3b82f6] flex-shrink-0" />
                   <input
-                    type="number"
-                    placeholder={`Mín. $${fmt(aiNum * 1.1)}`}
-                    value={goalAmount}
+                    type="number" placeholder={`Mín. $${fmt(aiNum * 1.1)}`} value={goalAmount}
                     onChange={(e) => setGoalAmount(e.target.value)}
                     className="flex-1 bg-transparent text-2xl font-mono font-bold text-white outline-none placeholder-slate-600"
                   />
@@ -285,17 +240,13 @@ export default function Setup() {
                   <p className="text-xs text-[#ff4757] mt-1">Debe ser al menos 10% más que tu inversión (${fmt(aiNum * 1.1)})</p>
                 )}
               </div>
-
-              {/* Deadline */}
               <div>
                 <label className="text-xs text-slate-400 mb-2 block font-mono">PLAZO</label>
                 <div className="flex gap-3">
                   <div className="flex items-center gap-2 border border-[#1a2240] rounded-xl px-4 py-3 flex-1 focus-within:border-[#3b82f6]/50 transition-colors">
                     <Clock className="w-4 h-4 text-[#3b82f6] flex-shrink-0" />
                     <input
-                      type="number"
-                      placeholder="12"
-                      value={deadlineValue}
+                      type="number" placeholder="12" value={deadlineValue}
                       onChange={(e) => setDeadlineValue(e.target.value)}
                       className="flex-1 bg-transparent text-xl font-mono font-bold text-white outline-none placeholder-slate-600 w-16"
                       min={1}
@@ -304,12 +255,9 @@ export default function Setup() {
                   <div className="flex border border-[#1a2240] rounded-xl overflow-hidden">
                     {["days", "months"].map((u) => (
                       <button
-                        key={u}
-                        onClick={() => setDeadlineUnit(u)}
+                        key={u} onClick={() => setDeadlineUnit(u)}
                         className={`px-4 py-3 text-sm font-mono transition-colors ${
-                          deadlineUnit === u
-                            ? "bg-[#3b82f6] text-white"
-                            : "text-slate-400 hover:text-white"
+                          deadlineUnit === u ? "bg-[#3b82f6] text-white" : "text-slate-400 hover:text-white"
                         }`}
                       >
                         {u === "days" ? "Días" : "Meses"}
@@ -318,12 +266,10 @@ export default function Setup() {
                   </div>
                 </div>
               </div>
-
-              {/* Live risk preview */}
               {canGoStep3 && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                  className={`rounded-xl p-4 border`}
+                  className="rounded-xl p-4 border"
                   style={{ borderColor: `${riskProfile.color}40`, background: `${riskProfile.color}08` }}
                 >
                   <div className="flex items-center gap-3 mb-3">
@@ -333,18 +279,13 @@ export default function Setup() {
                   </div>
                   <div className="flex justify-between text-xs font-mono mb-3">
                     <span className="text-slate-400">Retorno mensual necesario</span>
-                    <span className="font-bold" style={{ color: riskProfile.color }}>
-                      {requiredMonthlyReturn.toFixed(1)}%
-                    </span>
+                    <span className="font-bold" style={{ color: riskProfile.color }}>{requiredMonthlyReturn.toFixed(1)}%</span>
                   </div>
                   <p className="text-xs text-slate-400 leading-relaxed">{riskProfile.desc}</p>
-
                   {riskProfile.level === "ultra_aggressive" && (
                     <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
                       <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-red-400 leading-relaxed">
-                        La IA operará con máximo riesgo. Es posible perder gran parte del capital invertido.
-                      </p>
+                      <p className="text-xs text-red-400 leading-relaxed">La IA operará con máximo riesgo. Es posible perder gran parte del capital invertido.</p>
                     </div>
                   )}
                 </motion.div>
@@ -355,7 +296,6 @@ export default function Setup() {
 
       </AnimatePresence>
 
-      {/* Navigation */}
       {step > 0 && (
         <div className="flex items-center gap-3 mt-8">
           <button
@@ -366,9 +306,7 @@ export default function Setup() {
           </button>
 
           {step === 1 && (
-            <button
-              disabled={!canGoStep1}
-              onClick={() => setStep(2)}
+            <button disabled={!canGoStep1} onClick={() => setStep(2)}
               className="flex items-center gap-2 px-6 py-2.5 text-sm bg-[#00ff88] text-[#0a0e1a] font-semibold rounded-lg hover:bg-[#00cc6a] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Siguiente <ArrowRight className="w-4 h-4" />
@@ -376,9 +314,7 @@ export default function Setup() {
           )}
 
           {step === 2 && (
-            <button
-              disabled={!canGoStep2}
-              onClick={() => setStep(3)}
+            <button disabled={!canGoStep2} onClick={() => setStep(3)}
               className="flex items-center gap-2 px-6 py-2.5 text-sm bg-[#00ff88] text-[#0a0e1a] font-semibold rounded-lg hover:bg-[#00cc6a] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Siguiente <ArrowRight className="w-4 h-4" />
@@ -387,8 +323,7 @@ export default function Setup() {
 
           {step === 3 && (
             <button
-              disabled={!canGoStep3 || saving}
-              onClick={handleConfirm}
+              disabled={!canGoStep3 || saving} onClick={handleConfirm}
               className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               style={canGoStep3 ? { background: riskProfile.color, color: "#0a0e1a" } : { background: "#00ff88", color: "#0a0e1a" }}
             >
