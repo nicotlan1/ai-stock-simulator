@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 
-// Stock lists by risk level
 export const STOCK_LISTS = {
   conservative:     ["AAPL", "MSFT", "GOOGL", "AMZN", "JPM", "JNJ", "V", "PG"],
   moderate:         ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "AMD"],
@@ -13,23 +12,31 @@ export function getStocksForRisk(riskLevel) {
   return STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
 }
 
-// Generic Finnhub caller
 export async function callFinnhub(action, params = {}) {
   const response = await base44.functions.invoke("finnhub", { action, ...params });
   return response.data;
 }
 
-// Hook: market status + SPY price, polls every 60s
+// FIX: market_status y spy independientes — SPY no bloquea el status
 export function useMarketStatus() {
   const [status, setStatus] = useState({ open: null, spy: null, loading: true, error: false });
 
   const fetchData = useCallback(async () => {
     try {
-      const [market, spy] = await Promise.all([
+      const [marketResult, spyResult] = await Promise.allSettled([
         callFinnhub("market_status"),
         callFinnhub("spy")
       ]);
-      setStatus({ open: market.open, spy, loading: false, error: false });
+
+      const market = marketResult.status === "fulfilled" ? marketResult.value : null;
+      const spy    = spyResult.status    === "fulfilled" ? spyResult.value    : null;
+
+      setStatus({
+        open:    market?.open ?? false,
+        spy:     spy || null,
+        loading: false,
+        error:   marketResult.status === "rejected"
+      });
     } catch {
       setStatus(prev => ({ ...prev, loading: false, error: true }));
     }
@@ -44,11 +51,10 @@ export function useMarketStatus() {
   return status;
 }
 
-// Hook: quotes for a list of symbols
 export function useQuotes(symbols) {
-  const [quotes, setQuotes] = useState({});
+  const [quotes, setQuotes]   = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError]     = useState(false);
 
   const key = (symbols || []).join(",");
 
