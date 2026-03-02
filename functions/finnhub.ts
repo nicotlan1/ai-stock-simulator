@@ -142,9 +142,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "market_news") {
-      // General market news
-      const data = await finnhubGet(`/news?category=general`);
+      const category = body.category || "general";
+      const data = await finnhubGet(`/news?category=${category}`);
       return Response.json({ news: (data || []).slice(0, 10) });
+    }
+
+    if (action === "profile") {
+      const data = await finnhubGet(`/stock/profile2?symbol=${symbol}`);
+      return Response.json({ name: data.name, logo: data.logo, exchange: data.exchange, industry: data.finnhubIndustry });
     }
 
     return Response.json({ error: "Unknown action" }, { status: 400 });
