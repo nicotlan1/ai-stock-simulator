@@ -26,9 +26,15 @@ function KPICard({ label, children, delay, icon: Icon, iconColor }) {
 export default function KPICards({ wallet, config, holdings, onDeposit, onSendToAI }) {
   const portfolioValue = (holdings || []).reduce((s, h) => s + (h.current_value || 0), 0);
   const netWorth = (wallet?.free_balance || 0) + (wallet?.ai_capital || 0);
-  const initialCapital = config?.initial_capital || 0;
-  const totalPnl = netWorth - initialCapital;
-  const totalPnlPct = initialCapital > 0 ? (totalPnl / initialCapital) * 100 : 0;
+  // P&L = net worth actual vs capital total depositado (free_balance inicial + ai_capital inicial)
+  // El capital total depositado es free_balance + ai_capital en el momento del setup
+  // Usamos net_worth guardado en wallet como referencia del total depositado si existe,
+  // si no, caemos en initial_capital (solo el capital IA) como fallback
+  const totalDeposited = wallet?.net_worth && wallet.net_worth >= (wallet?.ai_capital || 0)
+    ? wallet.net_worth
+    : (config?.initial_capital || 0);
+  const totalPnl = netWorth - totalDeposited;
+  const totalPnlPct = totalDeposited > 0 ? (totalPnl / totalDeposited) * 100 : 0;
   const goalAmount = config?.goal_amount || 0;
   const progressPct = goalAmount > 0 ? Math.min(100, (netWorth / goalAmount) * 100) : 0;
   const freeBalance = wallet?.free_balance || 0;
