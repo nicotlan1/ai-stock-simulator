@@ -295,19 +295,20 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
 
     await Promise.all([
       base44.asServiceRole.entities.Transaction.create({
-        type: "buy",
-        symbol: c.symbol,
-        company_name: c.symbol,
-        shares,
-        price: c.quote.price,
-        total_amount: totalCost,
-        ai_reasoning: `Compra por ${modeLabel}. RSI: ${c.rsi?.toFixed(1) ?? "N/A"}. Sentimiento: ${c.sentimentSummary}. Puntajes — Técnico: ${c.techScore.toFixed(0)}/100, Momentum: ${c.momentumScore.toFixed(0)}/100, Sentimiento: ${c.sentimentScore.toFixed(0)}/100. Puntaje final: ${c.finalScore.toFixed(1)}. Invierto $${totalCost.toFixed(2)} (${(proportion * 100).toFixed(0)}% del capital disponible).`,
-        score_technical: Math.round(c.techScore),
-        score_fundamental: 0,
-        score_sentiment: Math.round(c.sentimentScore),
-        score_final: Math.round(c.finalScore),
-        executed_at: new Date().toISOString()
-      }),
+         type: "buy",
+         symbol: c.symbol,
+         company_name: c.symbol,
+         shares,
+         price: c.quote.price,
+         total_amount: totalCost,
+         ai_reasoning: `Compra por ${modeLabel}. RSI: ${c.rsi?.toFixed(1) ?? "N/A"}. Sentimiento: ${c.sentimentSummary}. Puntajes — Técnico: ${c.techScore.toFixed(0)}/100, Momentum: ${c.momentumScore.toFixed(0)}/100, Sentimiento: ${c.sentimentScore.toFixed(0)}/100. Puntaje final: ${c.finalScore.toFixed(1)}. Invierto $${totalCost.toFixed(2)} (${(proportion * 100).toFixed(0)}% del capital disponible).`,
+         score_technical: Math.round(c.techScore),
+         score_fundamental: 0,
+         score_sentiment: Math.round(c.sentimentScore),
+         score_final: Math.round(c.finalScore),
+         executed_at: new Date().toISOString(),
+         created_by: userEmail
+       }),
       base44.asServiceRole.entities.Holding.create({
        symbol: c.symbol,
        company_name: c.symbol,
@@ -323,7 +324,8 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
         type: "buy",
         symbol: c.symbol,
         message: `📥 ${mode === "initial" ? "Despliegue inicial" : "Nuevos fondos"}: ${c.symbol} a $${c.quote.price.toFixed(2)} — ${shares.toFixed(4)} acciones ($${totalCost.toFixed(2)}). Score: ${c.finalScore.toFixed(0)}/100`,
-        is_read: false
+        is_read: false,
+        created_by: userEmail
       })
     ]);
 
@@ -381,7 +383,8 @@ async function runAICycleForUser(base44, userEmail) {
       await base44.asServiceRole.entities.Alert.create({
         type: "info",
         message: `🚀 Capital inicial desplegado. La IA compró ${decisions.length} posición(es): ${decisions.map(d => d.symbol).join(", ")}.`,
-        is_read: false
+        is_read: false,
+        created_by: userEmail
       });
     }
 
@@ -657,7 +660,8 @@ async function runAICycleForUser(base44, userEmail) {
     available_cash: finalWallet?.liquid_cash || 0,
     invested_capital: investedValue,
     total_pnl: totalPortfolio - initialCapital,
-    total_pnl_pct: ((totalPortfolio - initialCapital) / initialCapital) * 100
+    total_pnl_pct: ((totalPortfolio - initialCapital) / initialCapital) * 100,
+    created_by: userEmail
   });
 
   return { success: true, decisions, positions: allHoldings.length };
