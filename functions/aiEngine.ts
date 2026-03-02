@@ -637,6 +637,10 @@ async function updatePrices(base44) {
 
   for (const holding of holdings) {
     try {
+      // Verify holding still exists before executing stop-loss (prevent double execution with runAICycle)
+      const existingHoldings = await base44.asServiceRole.entities.Holding.list();
+      if (!existingHoldings.find(h => h.id === holding.id)) continue;
+
       const quote = await getQuote(holding.symbol);
       if (!quote.price) continue;
       const currentPrice = quote.price;
