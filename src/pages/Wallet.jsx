@@ -51,7 +51,7 @@ export default function Wallet() {
     const user = await base44.auth.me();
     const [wallets, movs] = await Promise.all([
       base44.entities.Wallet.filter({ created_by: user.email }),
-      base44.entities.WalletMovement.filter({ created_by: user.email }, "-created_date", 50)
+      base44.entities.WalletMovement.list("-created_date", 50)
     ]);
     setWallet(wallets[0] || null);
     setMovements(movs || []);

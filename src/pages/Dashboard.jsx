@@ -26,9 +26,9 @@ export default function Dashboard() {
     const [configs, wallets, holdingsList, snapshotList, alertList] = await Promise.all([
       base44.entities.UserConfig.filter({ created_by: user.email }),
       base44.entities.Wallet.filter({ created_by: user.email }),
-      base44.entities.Holding.filter({ created_by: user.email }),
-      base44.entities.PerformanceSnapshot.filter({ created_by: user.email }),
-      base44.entities.Alert.filter({ created_by: user.email })
+      base44.entities.Holding.list(),
+      base44.entities.PerformanceSnapshot.list(),
+      base44.entities.Alert.list()
     ]);
     setConfig(configs[0] || null);
     setWallet(wallets[0] || null);

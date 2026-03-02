@@ -15,9 +15,7 @@ export default function Transactions() {
   const [filterTo, setFilterTo] = useState("");
 
   useEffect(() => {
-    base44.auth.me().then(user =>
-      base44.entities.Transaction.filter({ created_by: user.email }, "-executed_at", 200)
-    ).then(txs => {
+    base44.entities.Transaction.list("-executed_at", 200).then(txs => {
       setTransactions(txs || []);
       setLoading(false);
     });

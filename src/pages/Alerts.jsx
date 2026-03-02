@@ -30,8 +30,7 @@ export default function Alerts() {
   const [notifGranted, setNotifGranted] = useState(false);
 
   const load = useCallback(async () => {
-    const user = await base44.auth.me();
-    const data = await base44.entities.Alert.filter({ created_by: user.email }, "-created_date", 100);
+    const data = await base44.entities.Alert.list("-created_date", 100);
     setAlerts(data || []);
     setLoading(false);
   }, []);
