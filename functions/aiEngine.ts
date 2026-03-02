@@ -636,9 +636,10 @@ async function runAICycleForUser(base44, userEmail) {
   });
 
   // 9. Save performance snapshot
-  const allHoldings = await base44.asServiceRole.entities.Holding.list();
+  const allHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
   const investedValue = allHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
-  const finalWallet = (await base44.asServiceRole.entities.Wallet.list())[0];
+  const allFinalWallets = await base44.asServiceRole.entities.Wallet.list();
+  const finalWallet = allFinalWallets.find(w => w.created_by === userEmail) || allFinalWallets[0];
   const totalPortfolio = (finalWallet?.liquid_cash || 0) + investedValue;
   const initialCapital = config.initial_capital || totalPortfolio;
 
