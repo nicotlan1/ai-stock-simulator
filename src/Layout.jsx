@@ -41,8 +41,8 @@ export default function Layout({ children, currentPageName }) {
           navigate(createPageUrl("Setup"));
         }
       } catch {
-        // Error de red, timeout u otro fallo → fallback seguro: mostrar la app
-        if (!cancelled) setSetupDone(true);
+        // Error de red, timeout u otro fallo → redirigir a setup
+        if (!cancelled) setSetupDone(false);
       }
     };
 
