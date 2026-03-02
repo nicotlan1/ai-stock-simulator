@@ -107,6 +107,7 @@ export default function Dashboard() {
         onSendToAI={() => setActiveAction("send_to_ai")}
       />
       <PositionsTable holdings={holdings} quotes={quotes} />
+      <MarketSummaryBar stocks={config ? getStocksForRisk(config.risk_level) : []} />
       <PortfolioChart snapshots={snapshots} />
       <RecentAlerts alerts={alerts} />
 
