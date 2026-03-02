@@ -750,12 +750,40 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const body = await req.json().catch(() => ({}));
+
     if (body.action === "updatePrices") {
       const result = await updatePrices(base44);
       return Response.json(result);
     }
-    const result = await runAICycle(base44);
-    return Response.json(result);
+
+    // Run AI cycle for all users that have a config + wallet
+    const [allConfigs, allWallets] = await Promise.all([
+      base44.asServiceRole.entities.UserConfig.list(),
+      base44.asServiceRole.entities.Wallet.list()
+    ]);
+
+    const userEmails = [...new Set(
+      allConfigs
+        .filter(c => c.created_by && allWallets.some(w => w.created_by === c.created_by))
+        .map(c => c.created_by)
+    )];
+
+    if (!userEmails.length) {
+      return Response.json({ skipped: true, reason: "No users with config + wallet" });
+    }
+
+    const results = [];
+    for (const email of userEmails) {
+      try {
+        const result = await runAICycleForUser(base44, email);
+        results.push({ user: email, ...result });
+      } catch (err) {
+        console.error(`AI cycle failed for ${email}:`, err.message);
+        results.push({ user: email, error: err.message });
+      }
+    }
+
+    return Response.json({ success: true, users: results.length, results });
   } catch (error) {
     console.error("AI Engine error:", error.message);
     return Response.json({ error: error.message }, { status: 500 });
