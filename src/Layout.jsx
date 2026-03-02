@@ -6,20 +6,15 @@ import SidebarNav from "@/components/sidebar/SidebarNav";
 import FinnhubBanner from "@/components/shared/FinnhubBanner";
 import { useMarketStatus } from "@/components/shared/useFinnhub";
 import {
-  Activity,
-  PanelLeftClose,
-  PanelLeft,
-  Menu,
-  X
+  Activity, PanelLeftClose, PanelLeft, Menu, X
 } from "lucide-react";
 
 export default function Layout({ children, currentPageName }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [setupDone, setSetupDone] = useState(null);
+  const [setupDone, setSetupDone]   = useState(null);
   const marketStatus = useMarketStatus();
 
-  // Check setup status from DB once on mount
   useEffect(() => {
     const checkSetup = async () => {
       try {
@@ -35,7 +30,6 @@ export default function Layout({ children, currentPageName }) {
     checkSetup();
   }, []);
 
-  // Dynamic page title with net worth
   useEffect(() => {
     const updateTitle = async () => {
       try {
@@ -47,10 +41,14 @@ export default function Layout({ children, currentPageName }) {
           document.title = "AI Stock Simulator";
           return;
         }
-        const wallet = wallets[0];
+        const wallet  = wallets[0];
         const invested = holdings.reduce((s, h) => s + (h.current_value || 0), 0);
-        const netWorth = (wallet.liquid_cash || 0) + (wallet.ai_capital || 0) + invested;
-        const formatted = netWorth.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        // FIX: campos correctos del schema
+        const netWorth = wallet.net_worth ||
+          ((wallet.free_balance || 0) + (wallet.ai_capital || 0) + invested);
+        const formatted = netWorth.toLocaleString("en-US", {
+          minimumFractionDigits: 0, maximumFractionDigits: 0
+        });
         document.title = `$${formatted} | AI Stock Simulator`;
       } catch {
         document.title = "AI Stock Simulator";
@@ -66,7 +64,6 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [setupDone, currentPageName]);
 
-  // Redirect to setup if not done and not on setup page
   useEffect(() => {
     if (setupDone === false && currentPageName !== "Setup") {
       window.location.href = createPageUrl("Setup");
@@ -88,21 +85,17 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="min-h-screen bg-[#0a0e1a] flex">
       {mobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          onClick={() => setMobileOpen(false)} />
       )}
 
-      <aside
-        className={`
-          fixed lg:sticky top-0 left-0 z-50 h-screen
-          bg-[#0b1022] border-r border-[#1a2240]
-          flex flex-col transition-all duration-300 ease-in-out
-          ${collapsed ? "w-[68px]" : "w-[240px]"}
-          ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-        `}
-      >
+      <aside className={`
+        fixed lg:sticky top-0 left-0 z-50 h-screen
+        bg-[#0b1022] border-r border-[#1a2240]
+        flex flex-col transition-all duration-300 ease-in-out
+        ${collapsed ? "w-[68px]" : "w-[240px]"}
+        ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+      `}>
         <div className="flex items-center gap-3 px-4 h-16 border-b border-[#1a2240] flex-shrink-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00ff88] to-[#00cc6a] flex items-center justify-center flex-shrink-0">
             <Activity className="w-4 h-4 text-[#0a0e1a]" strokeWidth={3} />
@@ -120,18 +113,14 @@ export default function Layout({ children, currentPageName }) {
         </div>
 
         <div className="hidden lg:flex items-center justify-center h-12 border-t border-[#1a2240]">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-slate-500 hover:text-slate-300 transition-colors p-2"
-          >
+          <button onClick={() => setCollapsed(!collapsed)}
+            className="text-slate-500 hover:text-slate-300 transition-colors p-2">
             {collapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </button>
         </div>
 
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="lg:hidden absolute top-4 right-3 text-slate-400"
-        >
+        <button onClick={() => setMobileOpen(false)}
+          className="lg:hidden absolute top-4 right-3 text-slate-400">
           <X className="w-5 h-5" />
         </button>
       </aside>
@@ -147,10 +136,7 @@ export default function Layout({ children, currentPageName }) {
             <span className="text-sm font-bold text-slate-100">AI Stock Simulator</span>
           </div>
         </div>
-
-        <div className="p-4 md:p-6 lg:p-8">
-          {children}
-        </div>
+        <div className="p-4 md:p-6 lg:p-8">{children}</div>
       </main>
     </div>
   );
