@@ -366,8 +366,11 @@ async function runAICycleForUser(base44, userEmail) {
    const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
 
    // Market context from SP500History
-   const sp500History = await base44.asServiceRole.entities.SP500History.list('-timestamp', 1);
-   const spyChangeOrDefault = sp500History.length > 0 ? sp500History[0].spy_change_pct : 0;
+   const sp500History = await base44.asServiceRole.entities.SP500History.list();
+   const latestSpy = sp500History.sort((a, b) => 
+     new Date(b.timestamp) - new Date(a.timestamp)
+   )[0];
+   const spyChangeOrDefault = latestSpy?.spy_change_pct ?? 0;
    let marketMode = "neutral";
    if (spyChangeOrDefault < -2) marketMode = "bearish";
    else if (spyChangeOrDefault > 2) marketMode = "bullish";
