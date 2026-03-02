@@ -406,9 +406,11 @@ async function runAICycle(base44) {
           })
         ]);
 
-        // Return cash to liquid
+        // Return cash to liquid and adjust ai_capital
+        const freshWallet = (await base44.asServiceRole.entities.Wallet.list())[0];
         await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-          liquid_cash: (wallet.liquid_cash || 0) + totalValue
+          liquid_cash: (freshWallet.liquid_cash || 0) + totalValue,
+          ai_capital: Math.max(0, (freshWallet.ai_capital || 0) + realizedPnl)
         });
 
         decisions.push({ action: "stop_loss", symbol: holding.symbol, price: currentPrice, pnl: realizedPnl });
