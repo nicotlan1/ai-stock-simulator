@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, DollarSign, Target, Zap, CheckCircle, AlertTriangle, TrendingUp, Shield, Flame } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { calcRiskProfile, calcRequiredMonthlyReturn } from "@/functions/riskCalculator";
+import { calcRiskProfile, calcRequiredMonthlyReturn } from "@/lib/riskCalculator";
 
 function fmt(n) {
   return (n || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -47,7 +47,8 @@ export default function SendToAIModal({ wallet, config, amount, onClose, onSucce
         initial_capital: newAICapital,
         required_monthly_return: newRequiredReturn,
         risk_level: newRiskProfile.level,
-        estimated_probability: newRiskProfile.prob
+        estimated_probability: newRiskProfile.prob,
+        initial_investment_pending: true
       });
       
       await base44.entities.Wallet.update(wallet.id, {
@@ -86,7 +87,8 @@ export default function SendToAIModal({ wallet, config, amount, onClose, onSucce
         deadline_months: newDeadlineMonths,
         required_monthly_return: newRequiredReturn,
         risk_level: newRiskProfile.level,
-        estimated_probability: newRiskProfile.prob
+        estimated_probability: newRiskProfile.prob,
+        initial_investment_pending: true
       });
       
       await base44.entities.Wallet.update(wallet.id, {
