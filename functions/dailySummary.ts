@@ -41,77 +41,59 @@ Deno.serve(async (req) => {
       const holdings = allHoldings.filter(h => h.created_by === userEmail);
       const transactions = allTransactions.filter(t => t.created_by === userEmail);
 
-    // FIX: ordenar y limitar en JS en lugar de pasar parámetros incorrectos
-    const sortedTxs = transactions
-      .sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at))
-      .slice(0, 200);
+      const sortedTxs = transactions
+        .sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at))
+        .slice(0, 200);
 
-    // Today's trades
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayTxs = sortedTxs.filter(t => {
-      if (!t.executed_at) return false;
-      return new Date(t.executed_at) >= todayStart;
-    });
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayTxs = sortedTxs.filter(t => t.executed_at && new Date(t.executed_at) >= todayStart);
 
-    const buys  = todayTxs.filter(t => t.type === "buy");
-    const sells = todayTxs.filter(t => t.type === "sell");
-    const todayPnl = sells.reduce((sum, t) => sum + (t.realized_pnl || 0), 0);
+      const buys  = todayTxs.filter(t => t.type === "buy");
+      const sells = todayTxs.filter(t => t.type === "sell");
+      const todayPnl = sells.reduce((sum, t) => sum + (t.realized_pnl || 0), 0);
 
-    // Current portfolio value
-    const investedValue  = holdings.reduce((s, h) => s + (h.current_value || 0), 0);
-    const totalPortfolio = (wallet.liquid_cash || 0) + investedValue;
-    const initialCapital = config.initial_capital || totalPortfolio;
-    const totalPnlPct    = ((totalPortfolio - initialCapital) / initialCapital) * 100;
+      const investedValue  = holdings.reduce((s, h) => s + (h.current_value || 0), 0);
+      const totalPortfolio = (wallet.liquid_cash || 0) + investedValue;
+      const initialCapital = config.initial_capital || totalPortfolio;
+      const totalPnlPct    = ((totalPortfolio - initialCapital) / initialCapital) * 100;
 
-    // FIX: goalProgress protegido contra división por cero y valores negativos
-    const goalAmount    = config.goal_amount || 0;
-    const denominator   = goalAmount - initialCapital;
-    const goalProgress  = (goalAmount > 0 && denominator > 0)
-      ? Math.max(0, Math.min(100, ((totalPortfolio - initialCapital) / denominator) * 100))
-      : 0;
+      const goalAmount   = config.goal_amount || 0;
+      const denominator  = goalAmount - initialCapital;
+      const goalProgress = (goalAmount > 0 && denominator > 0)
+        ? Math.max(0, Math.min(100, ((totalPortfolio - initialCapital) / denominator) * 100))
+        : 0;
 
-    const sign = todayPnl >= 0 ? "+" : "";
-    const message =
-      `📊 Resumen del día: ${buys.length} compra(s), ${sells.length} venta(s). ` +
-      `P&L del día: ${sign}$${todayPnl.toFixed(2)}. ` +
-      `Portafolio total: $${totalPortfolio.toFixed(2)} (${totalPnlPct >= 0 ? "+" : ""}${totalPnlPct.toFixed(2)}% desde inicio). ` +
-      `Progreso hacia la meta: ${goalProgress.toFixed(1)}%.`;
+      const sign = todayPnl >= 0 ? "+" : "";
+      const message =
+        `📊 Resumen del día: ${buys.length} compra(s), ${sells.length} venta(s). ` +
+        `P&L del día: ${sign}$${todayPnl.toFixed(2)}. ` +
+        `Portafolio total: $${totalPortfolio.toFixed(2)} (${totalPnlPct >= 0 ? "+" : ""}${totalPnlPct.toFixed(2)}% desde inicio). ` +
+        `Progreso hacia la meta: ${goalProgress.toFixed(1)}%.`;
 
-    await base44.asServiceRole.entities.Alert.create({
-      type: "info",
-      message,
-      is_read: false
-    });
+      await base44.asServiceRole.entities.Alert.create({ type: "info", message, is_read: false });
 
-    // Milestone alerts (25, 50, 75, 100%)
-    const milestones = [25, 50, 75, 100];
-    for (const milestone of milestones) {
-      if (goalProgress >= milestone) {
-        // FIX: una sola llamada a la DB por milestone
-        const allGoalAlerts = await base44.asServiceRole.entities.Alert.filter({
-          type: "goal_reached"
-        });
-        const alreadySent = allGoalAlerts.some(
-          a => a.message && a.message.includes(`${milestone}%`)
-        );
-
-        if (!alreadySent) {
-          const emojis = { 25: "🌱", 50: "🚀", 75: "💫", 100: "🏆" };
-          await base44.asServiceRole.entities.Alert.create({
-            type: "goal_reached",
-            message: `${emojis[milestone]} ¡Hito alcanzado! Tu portafolio ha llegado al ${milestone}% del camino hacia tu meta. Portafolio actual: $${totalPortfolio.toFixed(2)} de $${goalAmount.toFixed(2)}.`,
-            is_read: false
-          });
+      const milestones = [25, 50, 75, 100];
+      for (const milestone of milestones) {
+        if (goalProgress >= milestone) {
+          const userGoalAlerts = (await base44.asServiceRole.entities.Alert.filter({ type: "goal_reached" }))
+            .filter(a => a.created_by === userEmail);
+          const alreadySent = userGoalAlerts.some(a => a.message && a.message.includes(`${milestone}%`));
+          if (!alreadySent) {
+            const emojis = { 25: "🌱", 50: "🚀", 75: "💫", 100: "🏆" };
+            await base44.asServiceRole.entities.Alert.create({
+              type: "goal_reached",
+              message: `${emojis[milestone]} ¡Hito alcanzado! Tu portafolio ha llegado al ${milestone}% del camino hacia tu meta. Portafolio actual: $${totalPortfolio.toFixed(2)} de $${goalAmount.toFixed(2)}.`,
+              is_read: false
+            });
+          }
         }
       }
+
+      summaries.push({ user: userEmail, trades_today: todayTxs.length, summary: message });
     }
 
-    return Response.json({
-      success: true,
-      summary: message,
-      trades_today: todayTxs.length
-    });
+    return Response.json({ success: true, users: summaries.length, summaries });
 
   } catch (error) {
     console.error("dailySummary error:", error.message);
