@@ -44,6 +44,8 @@ export default function Settings() {
   const [resetting, setResetting] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyResult, setHistoryResult] = useState(null);
 
   // Change goal form state
   const [newGoal, setNewGoal] = useState("");
