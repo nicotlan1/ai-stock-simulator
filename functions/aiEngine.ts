@@ -327,7 +327,8 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
     ]);
 
     // Reload wallet from DB for accurate balance on next iteration
-    const updatedWallet = (await base44.asServiceRole.entities.Wallet.list())[0];
+    const allUpdatedWallets = await base44.asServiceRole.entities.Wallet.list();
+    const updatedWallet = allUpdatedWallets.find(w => w.created_by === userEmail) || allUpdatedWallets[0];
     await base44.asServiceRole.entities.Wallet.update(wallet.id, {
       liquid_cash: Math.max(0, (updatedWallet.liquid_cash || 0) - totalCost)
     });
