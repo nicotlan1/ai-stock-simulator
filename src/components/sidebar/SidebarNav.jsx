@@ -23,14 +23,16 @@ export default function SidebarNav({ currentPage, collapsed }) {
   const [showLogout, setShowLogout] = useState(false);
 
   useEffect(() => {
+    if (!user?.email) return;
+    
     const load = async () => {
-      const alerts = await base44.entities.Alert.filter({ is_read: false });
+      const alerts = await base44.entities.Alert.filter({ user_id: user.email, is_read: false });
       setUnread(alerts.length);
     };
     load();
     const unsub = base44.entities.Alert.subscribe(() => load());
     return unsub;
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
