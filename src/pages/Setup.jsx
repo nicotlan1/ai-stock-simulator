@@ -132,6 +132,10 @@ export default function Setup() {
               className="inline-flex items-center gap-2 px-8 py-3.5 bg-[#00ff88] text-[#0a0e1a] font-semibold rounded-xl hover:bg-[#00cc6a] transition-colors">
               Comenzar <ArrowRight className="w-4 h-4" />
             </button>
+            <button onClick={() => navigate(createPageUrl("Dashboard"))}
+              className="mt-3 text-sm text-slate-500 hover:text-slate-300 transition-colors underline underline-offset-4">
+              Ya ingresé mis datos → ir al Dashboard
+            </button>
           </motion.div>
         )}
 
