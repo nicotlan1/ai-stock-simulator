@@ -19,6 +19,8 @@ const navItems = [
 
 export default function SidebarNav({ currentPage, collapsed }) {
   const [unread, setUnread] = useState(0);
+  const [user, setUser] = useState(null);
+  const [showLogout, setShowLogout] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -28,6 +30,10 @@ export default function SidebarNav({ currentPage, collapsed }) {
     load();
     const unsub = base44.entities.Alert.subscribe(() => load());
     return unsub;
+  }, []);
+
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
   return (
