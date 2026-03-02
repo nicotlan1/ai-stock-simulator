@@ -139,7 +139,8 @@ export default function SendToAIModal({ wallet, config, amount, onClose, onSucce
       });
       
       await base44.entities.UserConfig.update(config.id, {
-        initial_investment_pending: true
+        initial_investment_pending: true,
+        initial_capital: (config?.initial_capital || 0) + amount
       });
       
       await base44.entities.WalletMovement.create({
