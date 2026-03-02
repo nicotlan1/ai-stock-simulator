@@ -77,17 +77,37 @@ function calcEMA(data, period) {
   return ema;
 }
 
+function calcEMASeries(data, period) {
+  if (data.length < period) return [];
+  const k = 2 / (period + 1);
+  const result = [];
+  // Seed with simple average of first 'period' values
+  let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  result.push(ema);
+  for (let i = period; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+    result.push(ema);
+  }
+  return result;
+}
+
 function calcMACD(closes) {
-  if (closes.length < 26) return null;
-  // Calculate MACD line for last two points to detect crossover
-  const macdCurrent = calcEMA(closes, 12) - calcEMA(closes, 26);
-  const macdPrev = calcEMA(closes.slice(0, -1), 12) - calcEMA(closes.slice(0, -1), 26);
-  // Signal line (9-period EMA of MACD) approximated
-  const signalCurrent = calcEMA(closes.slice(-9).map((_, i, arr) => {
-    const sub = closes.slice(0, closes.length - 9 + i + 1);
-    return calcEMA(sub, 12) - calcEMA(sub, 26);
-  }), 9);
-  return { macdCurrent, macdPrev, signalCurrent, crossingUp: macdPrev < signalCurrent && macdCurrent >= signalCurrent };
+  if (closes.length < 35) return null; // need enough data for stable EMAs + signal
+  const ema12 = calcEMASeries(closes, 12);
+  const ema26 = calcEMASeries(closes, 26);
+  // Align: ema26 is shorter, offset = 26 - 12 = 14
+  const offset = 26 - 12;
+  const macdLine = ema26.map((v, i) => ema12[i + offset] - v);
+  if (macdLine.length < 9) return null;
+  const signalLine = calcEMASeries(macdLine, 9);
+  // Last two points for crossover detection
+  const macdCurrent = macdLine[macdLine.length - 1];
+  const macdPrev = macdLine[macdLine.length - 2];
+  const signalCurrent = signalLine[signalLine.length - 1];
+  const signalPrev = signalLine[signalLine.length - 2];
+  const crossingUp = macdPrev <= signalPrev && macdCurrent > signalCurrent;
+  const crossingDown = macdPrev >= signalPrev && macdCurrent < signalCurrent;
+  return { macdCurrent, macdPrev, signalCurrent, signalPrev, crossingUp, crossingDown };
 }
 
 function scoreTechnical(rsi, macd, riskLevel) {
