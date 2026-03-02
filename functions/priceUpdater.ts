@@ -23,6 +23,13 @@ function isMarketOpen() {
   return time >= 570 && time < 960;
 }
 
+const STOP_LOSS = {
+  conservative:     0.04,
+  moderate:         0.08,
+  aggressive:       0.12,
+  ultra_aggressive: 0.18
+};
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -44,20 +51,22 @@ Deno.serve(async (req) => {
     const config = configs[0] || {};
     const wallet = wallets[0];
     const riskLevel = config.risk_level || "moderate";
-
-    const STOP_LOSS = {
-      conservative: 0.04,
-      moderate: 0.08,
-      aggressive: 0.12,
-      ultra_aggressive: 0.18
-    };
     const stopLossPct = STOP_LOSS[riskLevel] || 0.08;
+
+    // FIX: cargar IDs una sola vez antes del loop
+    // para proteger contra race condition con aiEngine
+    const activeIds = new Set(
+      (await base44.asServiceRole.entities.Holding.list()).map(h => h.id)
+    );
 
     const updated = [];
     const stopped = [];
 
     for (const holding of holdings) {
       try {
+        // FIX: verificar que el holding aún existe antes de operar
+        if (!activeIds.has(holding.id)) continue;
+
         const quote = await getQuote(holding.symbol);
         const currentPrice = quote.price;
         if (!currentPrice) continue;
@@ -65,7 +74,6 @@ Deno.serve(async (req) => {
         const lossPct = (currentPrice - holding.avg_buy_price) / holding.avg_buy_price;
 
         if (lossPct <= -stopLossPct) {
-          // Stop-loss triggered
           const totalValue = currentPrice * holding.shares;
           const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
 
@@ -94,15 +102,18 @@ Deno.serve(async (req) => {
             })
           ]);
 
+          // FIX: recargar wallet desde DB + actualizar ai_capital
           if (wallet) {
+            const fw = (await base44.asServiceRole.entities.Wallet.list())[0];
             await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-              liquid_cash: (wallet.liquid_cash || 0) + totalValue
+              liquid_cash: (fw.liquid_cash || 0) + totalValue,
+              ai_capital: Math.max(0, (fw.ai_capital || 0) + realizedPnl)
             });
           }
 
           stopped.push({ symbol: holding.symbol, pnl: realizedPnl });
+
         } else {
-          // Normal price update
           await base44.asServiceRole.entities.Holding.update(holding.id, {
             current_price: currentPrice,
             current_value: currentPrice * holding.shares,
@@ -111,12 +122,19 @@ Deno.serve(async (req) => {
           });
           updated.push(holding.symbol);
         }
+
       } catch (err) {
         console.error(`Price update failed for ${holding.symbol}:`, err.message);
       }
     }
 
-    return Response.json({ success: true, updated: updated.length, stopped: stopped.length, stop_losses: stopped });
+    return Response.json({
+      success: true,
+      updated: updated.length,
+      stopped: stopped.length,
+      stop_losses: stopped
+    });
+
   } catch (error) {
     console.error("priceUpdater error:", error.message);
     return Response.json({ error: error.message }, { status: 500 });
