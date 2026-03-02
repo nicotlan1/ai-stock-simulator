@@ -19,39 +19,57 @@ async function insertWithRetry(base44, records) {
   } catch (err) {
     if (err.message?.includes("429") || err.status === 429) {
       await delay(3000);
-      await insertBatch(base44, records); // one retry
+      await insertBatch(base44, records);
     } else {
       throw err;
     }
   }
 }
 
+// FIX: headers más completos + retry para Yahoo
 async function fetchYahooHistory(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0" }
-  });
-  if (!res.ok) throw new Error(`Yahoo Finance ${res.status} for ${symbol}`);
-  const json = await res.json();
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error(`No data from Yahoo for ${symbol}`);
+  
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json",
+          "Accept-Language": "en-US,en;q=0.9"
+        }
+      });
 
-  const timestamps = result.timestamp || [];
-  const q = result.indicators?.quote?.[0] || {};
-  const closes = q.close || [];
-  const opens = q.open || [];
-  const highs = q.high || [];
-  const lows = q.low || [];
-  const volumes = q.volume || [];
+      if (res.status === 429 || res.status === 503) {
+        console.warn(`Yahoo rate limit for ${symbol}, attempt ${attempt}, waiting...`);
+        await delay(2000 * attempt);
+        continue;
+      }
 
-  return timestamps.map((ts, i) => ({
-    date: new Date(ts * 1000).toISOString().split("T")[0],
-    open: opens[i] ?? null,
-    high: highs[i] ?? null,
-    low: lows[i] ?? null,
-    close: closes[i] ?? null,
-    volume: volumes[i] ?? null
-  })).filter(d => d.close !== null);
+      if (!res.ok) throw new Error(`Yahoo Finance ${res.status} for ${symbol}`);
+
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      if (!result) throw new Error(`No data from Yahoo for ${symbol}`);
+
+      const timestamps = result.timestamp || [];
+      const q = result.indicators?.quote?.[0] || {};
+
+      return timestamps.map((ts, i) => ({
+        date: new Date(ts * 1000).toISOString().split("T")[0],
+        open:   q.open?.[i]   ?? null,
+        high:   q.high?.[i]   ?? null,
+        low:    q.low?.[i]    ?? null,
+        close:  q.close?.[i]  ?? null,
+        volume: q.volume?.[i] ?? null
+      })).filter(d => d.close !== null);
+
+    } catch (err) {
+      if (attempt === 3) throw err;
+      await delay(1000 * attempt);
+    }
+  }
+  return [];
 }
 
 Deno.serve(async (req) => {
@@ -60,7 +78,6 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Get user's risk profile
     const configs = await base44.asServiceRole.entities.UserConfig.list();
     const config = configs[0];
     if (!config) return Response.json({ error: "No config found" }, { status: 404 });
@@ -68,8 +85,8 @@ Deno.serve(async (req) => {
     const riskLevel = config.risk_level || "moderate";
     const symbols = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
 
-    // Load existing PriceHistory to avoid duplicates (get all symbol+date combos)
-    const existing = await base44.asServiceRole.entities.PriceHistory.list("-date", 5000);
+    // FIX: sin parámetros posicionales incorrectos
+    const existing = await base44.asServiceRole.entities.PriceHistory.list();
     const existingSet = new Set(existing.map(r => `${r.symbol}|${r.date}`));
 
     const results = [];
@@ -80,16 +97,22 @@ Deno.serve(async (req) => {
         let inserted = 0;
         let skipped = 0;
 
-        // Build list of new records to insert
         const toInsert = [];
         for (const candle of candles) {
           const key = `${symbol}|${candle.date}`;
           if (existingSet.has(key)) { skipped++; continue; }
-          toInsert.push({ symbol, date: candle.date, open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume });
+          toInsert.push({
+            symbol,
+            date:   candle.date,
+            open:   candle.open,
+            high:   candle.high,
+            low:    candle.low,
+            close:  candle.close,
+            volume: candle.volume
+          });
           existingSet.add(key);
         }
 
-        // Insert in batches of 10 with 500ms delay between batches
         const BATCH_SIZE = 10;
         for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
           const batch = toInsert.slice(i, i + BATCH_SIZE);
@@ -100,16 +123,26 @@ Deno.serve(async (req) => {
 
         results.push({ symbol, inserted, skipped, total: candles.length });
         console.log(`${symbol}: ${inserted} inserted, ${skipped} skipped`);
-
-        // 1 second between symbols to avoid write bursts
         await delay(1000);
+
       } catch (err) {
         console.error(`Failed for ${symbol}:`, err.message);
         results.push({ symbol, error: err.message });
       }
     }
 
+    // FIX: guardar qué símbolos cargaron bien en UserConfig
+    const loadedSymbols = results
+      .filter(r => !r.error)
+      .map(r => r.symbol)
+      .join(",");
+
+    await base44.asServiceRole.entities.UserConfig.update(config.id, {
+      history_loaded_symbols: loadedSymbols
+    });
+
     return Response.json({ success: true, symbols: symbols.length, results });
+
   } catch (error) {
     console.error("historicalLoader error:", error.message);
     return Response.json({ error: error.message }, { status: 500 });
