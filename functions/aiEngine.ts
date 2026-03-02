@@ -610,29 +610,76 @@ async function runAICycle(base44) {
 // ─── Price updater (independent of AI cycle) ─────────────────────────────────
 
 async function updatePrices(base44) {
-  const holdings = await base44.asServiceRole.entities.Holding.list();
-  if (!holdings.length) return { updated: 0 };
-  let updated = 0;
+  const [holdings, configs, wallets] = await Promise.all([
+    base44.asServiceRole.entities.Holding.list(),
+    base44.asServiceRole.entities.UserConfig.list(),
+    base44.asServiceRole.entities.Wallet.list()
+  ]);
+  if (!holdings.length) return { updated: 0, stopLosses: 0 };
+
+  const config = configs[0];
+  const wallet = wallets[0];
+  const riskLevel = config?.risk_level || "moderate";
+  const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
+
+  let updated = 0, stopLosses = 0;
+
   for (const holding of holdings) {
     try {
       const quote = await getQuote(holding.symbol);
       if (!quote.price) continue;
       const currentPrice = quote.price;
-      const currentValue = currentPrice * holding.shares;
-      const unrealizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
-      const unrealizedPnlPct = ((currentPrice - holding.avg_buy_price) / holding.avg_buy_price) * 100;
-      await base44.asServiceRole.entities.Holding.update(holding.id, {
-        current_price: currentPrice,
-        current_value: currentValue,
-        unrealized_pnl: unrealizedPnl,
-        unrealized_pnl_pct: unrealizedPnlPct
-      });
-      updated++;
+      const lossPct = (currentPrice - holding.avg_buy_price) / holding.avg_buy_price;
+
+      if (lossPct <= -params.stopLossPct) {
+        // Execute stop-loss sell
+        const totalValue = currentPrice * holding.shares;
+        const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
+
+        await Promise.all([
+          base44.asServiceRole.entities.Transaction.create({
+            type: "sell",
+            symbol: holding.symbol,
+            company_name: holding.company_name || holding.symbol,
+            shares: holding.shares,
+            price: currentPrice,
+            total_amount: totalValue,
+            realized_pnl: realizedPnl,
+            ai_reasoning: `STOP-LOSS activado (actualización de precios). Precio $${currentPrice.toFixed(2)} representa ${(lossPct * 100).toFixed(2)}% desde $${holding.avg_buy_price.toFixed(2)}. Límite: -${(params.stopLossPct * 100).toFixed(0)}%.`,
+            score_technical: 0, score_fundamental: 0, score_sentiment: 0, score_final: 0,
+            executed_at: new Date().toISOString()
+          }),
+          base44.asServiceRole.entities.Holding.delete(holding.id),
+          base44.asServiceRole.entities.Alert.create({
+            type: "stop_loss",
+            symbol: holding.symbol,
+            message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
+            is_read: false
+          })
+        ]);
+
+        if (wallet) {
+          const fw = (await base44.asServiceRole.entities.Wallet.list())[0];
+          await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+            liquid_cash: (fw.liquid_cash || 0) + totalValue,
+            ai_capital: Math.max(0, (fw.ai_capital || 0) + realizedPnl)
+          });
+        }
+        stopLosses++;
+      } else {
+        await base44.asServiceRole.entities.Holding.update(holding.id, {
+          current_price: currentPrice,
+          current_value: currentPrice * holding.shares,
+          unrealized_pnl: (currentPrice - holding.avg_buy_price) * holding.shares,
+          unrealized_pnl_pct: lossPct * 100
+        });
+        updated++;
+      }
     } catch (err) {
       console.error(`Price update failed for ${holding.symbol}:`, err.message);
     }
   }
-  return { updated };
+  return { updated, stopLosses };
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
