@@ -118,12 +118,12 @@ Deno.serve(async (req) => {
     }
 
     if (action === "candles_range") {
-      // Candles for different ranges: 1D (5m), 5D (15m), 1M (D), 3M (D)
+      // Candles for different ranges — all use daily resolution (free plan)
       const rangeMap = {
-        "1D":  { resolution: "5",  days: 1  },
-        "5D":  { resolution: "15", days: 5  },
-        "1M":  { resolution: "D",  days: 30 },
-        "3M":  { resolution: "D",  days: 90 }
+        "1D":  { resolution: "D", days: 2  },
+        "5D":  { resolution: "D", days: 5  },
+        "1M":  { resolution: "D", days: 30 },
+        "3M":  { resolution: "D", days: 90 }
       };
       const { resolution, days } = rangeMap[body.range] || rangeMap["1M"];
       const to = Math.floor(Date.now() / 1000);
