@@ -340,13 +340,15 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
 
 // ─── Core AI cycle ────────────────────────────────────────────────────────────
 
-async function runAICycle(base44) {
-  // 1. Load config & wallet (get first record for this user)
-  const [configs, wallets, holdings] = await Promise.all([
-    base44.asServiceRole.entities.UserConfig.list(),
-    base44.asServiceRole.entities.Wallet.list(),
-    base44.asServiceRole.entities.Holding.list()
-  ]);
+async function runAICycleForUser(base44, userEmail) {
+  // 1. Load config & wallet for this specific user
+  const allConfigs  = await base44.asServiceRole.entities.UserConfig.list();
+  const allWallets  = await base44.asServiceRole.entities.Wallet.list();
+  const allHoldings = await base44.asServiceRole.entities.Holding.list();
+
+  const configs  = allConfigs.filter(c => c.created_by === userEmail);
+  const wallets  = allWallets.filter(w => w.created_by === userEmail);
+  const holdings = allHoldings.filter(h => h.created_by === userEmail);
 
   if (!configs.length || !wallets.length) {
     return { skipped: true, reason: "No config or wallet found" };
