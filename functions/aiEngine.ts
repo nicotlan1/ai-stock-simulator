@@ -309,14 +309,15 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
         executed_at: new Date().toISOString()
       }),
       base44.asServiceRole.entities.Holding.create({
-        symbol: c.symbol,
-        company_name: c.symbol,
-        shares,
-        avg_buy_price: c.quote.price,
-        current_price: c.quote.price,
-        current_value: totalCost,
-        unrealized_pnl: 0,
-        unrealized_pnl_pct: 0
+       symbol: c.symbol,
+       company_name: c.symbol,
+       shares,
+       avg_buy_price: c.quote.price,
+       current_price: c.quote.price,
+       current_value: totalCost,
+       unrealized_pnl: 0,
+       unrealized_pnl_pct: 0,
+       created_by: userEmail
       }),
       base44.asServiceRole.entities.Alert.create({
         type: "buy",
@@ -605,7 +606,8 @@ async function runAICycleForUser(base44, userEmail) {
               current_price: quote.price,
               current_value: totalCost,
               unrealized_pnl: 0,
-              unrealized_pnl_pct: 0
+              unrealized_pnl_pct: 0,
+              created_by: userEmail
             }),
             base44.asServiceRole.entities.Alert.create({
               type: "buy",
