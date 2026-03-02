@@ -111,10 +111,13 @@ export default function AILog() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.entities.Transaction.list("-executed_at", 100).then(txs => {
+    const load = async () => {
+      const user = await base44.auth.me();
+      const txs = await base44.entities.Transaction.filter({ user_id: user.email }, "-executed_at", 100);
       setTransactions(txs || []);
       setLoading(false);
-    });
+    };
+    load();
   }, []);
 
   return (

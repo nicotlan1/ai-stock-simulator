@@ -15,10 +15,13 @@ export default function Transactions() {
   const [filterTo, setFilterTo] = useState("");
 
   useEffect(() => {
-    base44.entities.Transaction.list("-executed_at", 200).then(txs => {
+    const load = async () => {
+      const user = await base44.auth.me();
+      const txs = await base44.entities.Transaction.filter({ user_id: user.email }, "-executed_at", 200);
       setTransactions(txs || []);
       setLoading(false);
-    });
+    };
+    load();
   }, []);
 
   const filtered = transactions.filter(tx => {
