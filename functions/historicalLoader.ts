@@ -7,8 +7,27 @@ const STOCK_LISTS = {
   ultra_aggressive: ["NVDA", "TSLA", "COIN", "PLTR", "MSTR", "SMCI", "AMD", "RIVN", "SOUN", "RKLB"]
 };
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function insertBatch(base44, records) {
+  await Promise.all(records.map(r => base44.asServiceRole.entities.PriceHistory.create(r)));
+}
+
+async function insertWithRetry(base44, records) {
+  try {
+    await insertBatch(base44, records);
+  } catch (err) {
+    if (err.message?.includes("429") || err.status === 429) {
+      await delay(3000);
+      await insertBatch(base44, records); // one retry
+    } else {
+      throw err;
+    }
+  }
+}
+
 async function fetchYahooHistory(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=6mo`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" }
   });
