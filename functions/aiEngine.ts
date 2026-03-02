@@ -467,7 +467,7 @@ async function runAICycleForUser(base44, userEmail) {
   }
 
   // Reload holdings after stop-loss executions
-  const activeHoldings = await base44.asServiceRole.entities.Holding.list();
+  const activeHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
   const holdingMap = {};
   activeHoldings.forEach(h => { holdingMap[h.symbol] = h; });
 
