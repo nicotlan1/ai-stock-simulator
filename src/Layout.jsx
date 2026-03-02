@@ -17,25 +17,37 @@ export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkSetup = async () => {
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 5000)
+      );
+
       try {
-        const [configs, wallets] = await Promise.all([
-          base44.entities.UserConfig.list(),
-          base44.entities.Wallet.list()
+        const [configs, wallets] = await Promise.race([
+          Promise.all([
+            base44.entities.UserConfig.list(),
+            base44.entities.Wallet.list()
+          ]),
+          timeout
         ]);
+
+        if (cancelled) return;
+
         const done = configs.length > 0 && wallets.length > 0;
         setSetupDone(done);
         if (!done && currentPageName !== "Setup") {
           navigate(createPageUrl("Setup"));
         }
       } catch {
-        setSetupDone(false);
-        if (currentPageName !== "Setup") {
-          navigate(createPageUrl("Setup"));
-        }
+        // Error de red, timeout u otro fallo → fallback seguro: mostrar la app
+        if (!cancelled) setSetupDone(true);
       }
     };
+
     checkSetup();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
