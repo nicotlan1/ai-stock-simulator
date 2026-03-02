@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import {
-  Wallet, LayoutDashboard, TrendingUp, Bot, List, Bell, Settings, Globe
+  Wallet, LayoutDashboard, TrendingUp, Bot, List, Bell, Settings, Globe, LogOut, ChevronUp
 } from "lucide-react";
 
 const navItems = [
