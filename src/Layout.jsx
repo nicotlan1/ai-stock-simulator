@@ -25,8 +25,9 @@ export default function Layout({ children, currentPageName }) {
       );
 
       try {
-        const [configs, wallets] = await Promise.race([
+        const [user, configs, wallets] = await Promise.race([
           Promise.all([
+            base44.auth.me(),
             base44.entities.UserConfig.list(),
             base44.entities.Wallet.list()
           ]),
@@ -35,7 +36,12 @@ export default function Layout({ children, currentPageName }) {
 
         if (cancelled) return;
 
-        const done = configs.length > 0 && wallets.length > 0;
+        // Filter by current user's email
+        const userEmail = user?.email;
+        const userConfigs = userEmail ? configs.filter(c => c.created_by === userEmail) : [];
+        const userWallets = userEmail ? wallets.filter(w => w.created_by === userEmail) : [];
+        
+        const done = userConfigs.length > 0 && userWallets.length > 0;
         setSetupDone(done);
         if (!done && currentPageName !== "Setup") {
           navigate(createPageUrl("Setup"));
