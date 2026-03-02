@@ -30,22 +30,25 @@ async function getCandles(symbol, base44Client) {
         "-date",
         130
       );
-      if (rows && rows.length > 35) {
-        // Build a candle-compatible object using closes sorted oldest→newest
+      if (rows && rows.length >= 35) {
+        // Sort oldest→newest for correct indicator calculation
         const sorted = rows.slice().reverse();
+        console.log(`Using PriceHistory for ${symbol}: ${sorted.length} points`);
         return {
+          s: "ok",
           c: sorted.map(r => r.close),
           o: sorted.map(r => r.open),
           h: sorted.map(r => r.high),
           l: sorted.map(r => r.low),
-          s: "ok"
+          t: sorted.map(r => Math.floor(new Date(r.date).getTime() / 1000))
         };
       }
     } catch (err) {
-      console.warn(`PriceHistory fallback for ${symbol}:`, err.message);
+      console.warn(`PriceHistory error for ${symbol}:`, err.message);
     }
   }
   // Fallback: Finnhub candles
+  console.log(`Fallback to Finnhub for ${symbol}`);
   const to = Math.floor(Date.now() / 1000);
   const from = to - 35 * 24 * 60 * 60;
   const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}`);
