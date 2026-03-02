@@ -46,6 +46,7 @@ export default function AIStatusBar({ config, holdings, marketStatus }) {
   const riskLevel = config.risk_level || "moderate";
   const nextInMin = getNextAnalysisIn(lastRun, riskLevel);
   const activePositions = holdings?.length || 0;
+  const minutesSinceLastRun = lastRun ? (timeNow.getTime() - new Date(lastRun).getTime()) / 60000 : Infinity;
 
   let statusText = "Próximo análisis en — min";
   let statusColor = "text-slate-400";
@@ -78,11 +79,17 @@ export default function AIStatusBar({ config, holdings, marketStatus }) {
   }
 
   if (nextInMin !== null && nextInMin < 2) {
-    statusText = "Analizando...";
-    statusColor = "text-[#00ff88]";
-    icon = <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity }}>
-      <Bot className="w-4 h-4" />
-    </motion.div>;
+    if (minutesSinceLastRun < 5) {
+      statusText = "Analizando...";
+      statusColor = "text-[#00ff88]";
+      icon = <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity }}>
+        <Bot className="w-4 h-4" />
+      </motion.div>;
+    } else {
+      statusText = "Análisis pendiente";
+      statusColor = "text-yellow-500";
+      icon = <AlertCircle className="w-4 h-4" />;
+    }
   } else if (nextInMin !== null) {
     statusText = `Próximo análisis en ${nextInMin} min`;
     statusColor = "text-slate-300";
