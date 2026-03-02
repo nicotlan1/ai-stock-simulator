@@ -141,11 +141,41 @@ Deno.serve(async (req) => {
       }
     }
 
+    // After market close: persist today's closing prices to PriceHistory
+    let historyAdded = 0;
+    if (isAfterMarketClose()) {
+      const today = todayEST();
+      const freshHoldings = await base44.asServiceRole.entities.Holding.list();
+      // Check which symbols already have today's entry
+      const existing = await base44.asServiceRole.entities.PriceHistory.filter({ date: today }, "-date", 200);
+      const existingSymbols = new Set(existing.map(r => r.symbol));
+
+      for (const h of freshHoldings) {
+        if (existingSymbols.has(h.symbol)) continue;
+        if (!h.current_price) continue;
+        try {
+          await base44.asServiceRole.entities.PriceHistory.create({
+            symbol: h.symbol,
+            date: today,
+            open: h.current_price,
+            high: h.current_price,
+            low: h.current_price,
+            close: h.current_price,
+            volume: 0
+          });
+          historyAdded++;
+        } catch (err) {
+          console.error(`PriceHistory insert failed for ${h.symbol}:`, err.message);
+        }
+      }
+    }
+
     return Response.json({
       success: true,
       updated: updated.length,
       stopped: stopped.length,
-      stop_losses: stopped
+      stop_losses: stopped,
+      history_added: historyAdded
     });
 
   } catch (error) {
