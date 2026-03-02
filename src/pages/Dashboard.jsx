@@ -8,6 +8,8 @@ import PositionsTable from "@/components/dashboard/PositionsTable";
 import PortfolioChart from "@/components/dashboard/PortfolioChart";
 import RecentAlerts from "@/components/dashboard/RecentAlerts";
 import ActionPanel from "@/components/wallet/ActionPanel";
+import MarketSummaryBar from "@/components/dashboard/MarketSummaryBar";
+import { getStocksForRisk } from "@/components/shared/useFinnhub";
 
 export default function Dashboard() {
   const [config, setConfig] = useState(null);
