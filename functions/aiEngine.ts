@@ -540,7 +540,8 @@ async function runAICycleForUser(base44, userEmail) {
   const currentPositions = currentHoldingsAfterSells.length;
 
   // Reload wallet to reflect cash freed by sells in section 6
-  const freshWalletForBuys = (await base44.asServiceRole.entities.Wallet.list())[0];
+  const allFreshWalletsForBuys = await base44.asServiceRole.entities.Wallet.list();
+  const freshWalletForBuys = allFreshWalletsForBuys.find(w => w.created_by === userEmail) || allFreshWalletsForBuys[0];
   const freshLiquidCash = freshWalletForBuys?.liquid_cash || 0;
   const freshTotalAICapital = freshWalletForBuys?.ai_capital || 0;
   const freshReserveFloor = freshTotalAICapital * 0.05;
