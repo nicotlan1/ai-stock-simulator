@@ -4,6 +4,7 @@ import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import SidebarNav from "@/components/sidebar/SidebarNav";
 import FinnhubBanner from "@/components/shared/FinnhubBanner";
+import AgentChat from "@/components/agent/AgentChat";
 import { useMarketStatus } from "@/components/shared/useFinnhub";
 import {
   Activity, PanelLeftClose, PanelLeft, Menu, X
