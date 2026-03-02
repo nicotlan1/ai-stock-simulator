@@ -658,22 +658,31 @@ async function runAICycleForUser(base44, userEmail) {
 // ─── Price updater (independent of AI cycle) ─────────────────────────────────
 
 async function updatePrices(base44) {
-  const [holdings, configs, wallets] = await Promise.all([
+  const [allHoldings, allConfigs, allWallets] = await Promise.all([
     base44.asServiceRole.entities.Holding.list(),
     base44.asServiceRole.entities.UserConfig.list(),
     base44.asServiceRole.entities.Wallet.list()
   ]);
-  if (!holdings.length) return { updated: 0, stopLosses: 0 };
+  if (!allHoldings.length) return { updated: 0, stopLosses: 0 };
 
-  const config = configs[0];
-  const wallet = wallets[0];
-  const riskLevel = config?.risk_level || "moderate";
-  const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
+  // Build per-user maps
+  const userEmails = [...new Set(allHoldings.map(h => h.created_by).filter(Boolean))];
+  const configByUser = {};
+  const walletByUser = {};
+  for (const email of userEmails) {
+    configByUser[email] = allConfigs.find(c => c.created_by === email);
+    walletByUser[email] = allWallets.find(w => w.created_by === email);
+  }
 
   let updated = 0, stopLosses = 0;
 
-  const activePriceHoldingIds = new Set((await base44.asServiceRole.entities.Holding.list()).map(h => h.id));
-  for (const holding of holdings) {
+  const activePriceHoldingIds = new Set(allHoldings.map(h => h.id));
+  for (const holding of allHoldings) {
+    const userEmail = holding.created_by;
+    const config = configByUser[userEmail];
+    const wallet = walletByUser[userEmail];
+    const riskLevel = config?.risk_level || "moderate";
+    const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
     try {
       // Verify holding still exists before executing stop-loss (prevent double execution with runAICycle)
       if (!activePriceHoldingIds.has(holding.id)) continue;
