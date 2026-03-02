@@ -9,6 +9,7 @@ import RecentAlerts from "@/components/dashboard/RecentAlerts";
 import ActionPanel from "@/components/wallet/ActionPanel";
 import SendToAIModal from "@/components/wallet/SendToAIModal";
 import MarketSummaryBar from "@/components/dashboard/MarketSummaryBar";
+import AIStatusBar from "@/components/dashboard/AIStatusBar";
 import { getStocksForRisk } from "@/components/shared/useFinnhub";
 
 export default function Dashboard() {
@@ -104,6 +105,7 @@ export default function Dashboard() {
   return (
     <div>
       <DashboardHeader config={config} />
+      <AIStatusBar config={config} holdings={holdings} />
       <KPICards
         wallet={wallet}
         config={config}
