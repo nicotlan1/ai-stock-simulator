@@ -14,6 +14,7 @@ export default function Layout({ children, currentPageName }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [setupDone, setSetupDone]   = useState(null);
   const marketStatus = useMarketStatus();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const checkSetup = async () => {
@@ -22,9 +23,16 @@ export default function Layout({ children, currentPageName }) {
           base44.entities.UserConfig.list(),
           base44.entities.Wallet.list()
         ]);
-        setSetupDone(configs.length > 0 && wallets.length > 0);
+        const done = configs.length > 0 && wallets.length > 0;
+        setSetupDone(done);
+        if (!done && currentPageName !== "Setup") {
+          navigate(createPageUrl("Setup"));
+        }
       } catch {
         setSetupDone(false);
+        if (currentPageName !== "Setup") {
+          navigate(createPageUrl("Setup"));
+        }
       }
     };
     checkSetup();
