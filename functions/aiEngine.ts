@@ -502,7 +502,14 @@ async function runAICycle(base44) {
   const currentHoldingsAfterSells = await base44.asServiceRole.entities.Holding.list();
   const currentPositions = currentHoldingsAfterSells.length;
 
-  if (currentPositions < params.maxPositions && investableCash > 10) {
+  // Reload wallet to reflect cash freed by sells in section 6
+  const freshWalletForBuys = (await base44.asServiceRole.entities.Wallet.list())[0];
+  const freshLiquidCash = freshWalletForBuys?.liquid_cash || 0;
+  const freshTotalAICapital = freshWalletForBuys?.ai_capital || 0;
+  const freshReserveFloor = freshTotalAICapital * 0.05;
+  const freshInvestableCash = Math.max(0, freshLiquidCash - freshReserveFloor);
+
+  if (currentPositions < params.maxPositions && freshInvestableCash > 10) {
     const ownedSymbols = new Set(currentHoldingsAfterSells.map(h => h.symbol));
     const candidates = stockList.filter(s => !ownedSymbols.has(s));
 
