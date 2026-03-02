@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, DollarSign, Target, Zap, CheckCircle, AlertTriangle, TrendingUp, Shield, Flame } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { calcRiskProfile, calcRequiredMonthlyReturn } from "@/lib/riskCalculator";
+import { calcRiskProfile, calcRequiredMonthlyReturn } from "@/functions/riskCalculator";
 
 function fmt(n) {
   return (n || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
