@@ -395,8 +395,10 @@ async function runAICycleForUser(base44, userEmail) {
   const lastRun = config.last_ai_run ? new Date(config.last_ai_run) : null;
   const minutesSinceLastRun = lastRun ? (Date.now() - lastRun.getTime()) / 60000 : Infinity;
   if (minutesSinceLastRun < params.analysisMinutes) {
-    return { skipped: true, reason: `Only ${minutesSinceLastRun.toFixed(1)} min since last run, need ${params.analysisMinutes}` };
+   return { skipped: true, reason: `Only ${minutesSinceLastRun.toFixed(1)} min since last run, need ${params.analysisMinutes}` };
   }
+
+  console.log(`[AI CYCLE START] User: ${userEmail}, Last run: ${lastRun ? lastRun.toISOString() : "never"}, Minutes since: ${minutesSinceLastRun.toFixed(1)}, Risk level: ${riskLevel}`);
 
   // 4. Available capital
   const totalAICapital = wallet.ai_capital || 0;
@@ -478,8 +480,9 @@ async function runAICycleForUser(base44, userEmail) {
   activeHoldings.forEach(h => { holdingMap[h.symbol] = h; });
 
   // 6. SELL ANALYSIS on current holdings ────────────────────────────────────
+  console.log(`[SELL ANALYSIS] Checking ${activeHoldings.length} holdings for sell signals`);
   for (const holding of activeHoldings) {
-    try {
+   try {
       const [candleData, news, quote] = await Promise.all([
           getCandles(holding.symbol, base44),
           getNews(holding.symbol),
@@ -546,6 +549,7 @@ async function runAICycleForUser(base44, userEmail) {
   // 7. BUY ANALYSIS on universe (only if under max positions) ───────────────
   const currentHoldingsAfterSells = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
   const currentPositions = currentHoldingsAfterSells.length;
+  console.log(`[BUY ANALYSIS] Current positions: ${currentPositions}/${params.maxPositions}, Fresh investable cash: $${freshInvestableCash.toFixed(2)}`);
 
   // Reload wallet to reflect cash freed by sells in section 6
   const allFreshWalletsForBuys = await base44.asServiceRole.entities.Wallet.list();
@@ -642,9 +646,12 @@ async function runAICycleForUser(base44, userEmail) {
   }
 
   // 8. Update last_ai_run timestamp
+  const nowISO = new Date().toISOString();
+  console.log(`[UPDATE TIMESTAMP] Setting last_ai_run to ${nowISO}`);
   await base44.asServiceRole.entities.UserConfig.update(config.id, {
-    last_ai_run: new Date().toISOString()
+    last_ai_run: nowISO
   });
+  console.log(`[UPDATE COMPLETE] last_ai_run updated successfully`);
 
   // 9. Save performance snapshot
   const allHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
@@ -654,6 +661,7 @@ async function runAICycleForUser(base44, userEmail) {
   const totalPortfolio = (finalWallet?.liquid_cash || 0) + investedValue;
   const initialCapital = config.initial_capital || totalPortfolio;
 
+  console.log(`[SNAPSHOT] Portfolio: $${totalPortfolio.toFixed(2)}, PnL: $${(totalPortfolio - initialCapital).toFixed(2)}`);
   await base44.asServiceRole.entities.PerformanceSnapshot.create({
     timestamp: new Date().toISOString(),
     total_portfolio_value: totalPortfolio,
@@ -664,6 +672,7 @@ async function runAICycleForUser(base44, userEmail) {
     user_id: userEmail
   });
 
+  console.log(`[AI CYCLE END] Completed with ${decisions.length} decisions`);
   return { success: true, decisions, positions: allHoldings.length };
 }
 
