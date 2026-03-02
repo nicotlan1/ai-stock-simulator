@@ -248,7 +248,7 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
   for (const symbol of candidates) {
     try {
       const [candleData, news, quote] = await Promise.all([
-        getCandles(symbol),
+        getCandles(symbol, base44),
         getNews(symbol),
         getQuote(symbol)
       ]);
