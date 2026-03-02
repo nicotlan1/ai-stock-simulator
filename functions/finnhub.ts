@@ -61,9 +61,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "candles") {
-      // 30-day price history (daily candles)
+      // 45-day price history (daily candles) — guarantees enough trading days
       const to = Math.floor(Date.now() / 1000);
-      const from = to - 30 * 24 * 60 * 60;
+      const from = to - 45 * 24 * 60 * 60;
       const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}`);
       if (data.s !== "ok") return Response.json({ candles: [] });
       const candles = (data.t || []).map((t, i) => ({
