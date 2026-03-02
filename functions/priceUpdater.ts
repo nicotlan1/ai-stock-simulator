@@ -11,7 +11,16 @@ async function finnhubGet(path) {
 
 async function getQuote(symbol) {
   const data = await finnhubGet(`/quote?symbol=${symbol}`);
-  return { price: data.c, change: data.d, changePct: data.dp };
+  return { price: data.c, change: data.d, changePct: data.dp, open: data.o, high: data.h, low: data.l };
+}
+
+function isNearMarketClose() {
+  const now = new Date();
+  const eastern = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const day = eastern.getDay();
+  const time = eastern.getHours() * 60 + eastern.getMinutes();
+  if (day === 0 || day === 6) return false;
+  return time >= 955 && time <= 965; // 15:55–16:05 EST
 }
 
 function isMarketOpen() {
