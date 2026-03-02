@@ -46,14 +46,23 @@ async function getQuote(symbol) {
 
 function calcRSI(closes, period = 14) {
   if (closes.length < period + 1) return null;
-  let gains = 0, losses = 0;
-  for (let i = closes.length - period; i < closes.length; i++) {
+  // Initial simple average over first 'period' changes
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff;
-    else losses += Math.abs(diff);
+    if (diff > 0) avgGain += diff;
+    else avgLoss += Math.abs(diff);
   }
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
+  avgGain /= period;
+  avgLoss /= period;
+  // Wilder's smoothing for remaining periods
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? Math.abs(diff) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
   if (avgLoss === 0) return 100;
   const rs = avgGain / avgLoss;
   return 100 - (100 / (1 + rs));
