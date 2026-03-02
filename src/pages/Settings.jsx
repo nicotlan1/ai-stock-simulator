@@ -53,7 +53,7 @@ export default function Settings() {
   const [newDeadlineUnit, setNewDeadlineUnit] = useState("months");
 
   useEffect(() => {
-    base44.entities.UserConfig.list("-created_date", 1).then(res => {
+    base44.entities.UserConfig.list().then(res => {
       setConfig(res[0] || null);
       setLoading(false);
     });
@@ -127,7 +127,6 @@ export default function Settings() {
       base44.entities.WalletMovement.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.WalletMovement.delete(r.id)))),
       base44.entities.SP500History.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.SP500History.delete(r.id))))
     ]);
-    localStorage.removeItem("ai_stock_setup_done");
     window.location.href = createPageUrl("Setup");
   };
 

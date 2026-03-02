@@ -40,9 +40,10 @@ export default function Layout({ children, currentPageName }) {
         if (!done && currentPageName !== "Setup") {
           navigate(createPageUrl("Setup"));
         }
-      } catch {
-        // Error de red, timeout u otro fallo → redirigir a setup
-        if (!cancelled) setSetupDone(false);
+      } catch (err) {
+        if (!cancelled) {
+          setSetupDone(err.message === "timeout" ? true : false);
+        }
       }
     };
 
