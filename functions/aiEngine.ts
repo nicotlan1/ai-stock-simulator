@@ -172,6 +172,114 @@ const STOCK_LISTS = {
   ultra_aggressive: ["NVDA", "TSLA", "COIN", "PLTR", "MSTR", "SMCI", "AMD", "RIVN", "SOUN", "RKLB"]
 };
 
+// ─── Initial deployment (first time or new funds) ────────────────────────────
+
+async function deployCapital(base44, config, wallet, params, stockList, riskLevel, mode) {
+  const totalAICapital = wallet.ai_capital || 0;
+  const liquidCash = wallet.liquid_cash || 0;
+  const reserveFloor = totalAICapital * 0.05;
+  const investableCash = Math.max(0, liquidCash - reserveFloor);
+
+  if (investableCash < 1) return [];
+
+  const decisions = [];
+  const currentHoldings = await base44.asServiceRole.entities.Holding.list();
+  const currentPositions = currentHoldings.length;
+  const ownedSymbols = new Set(currentHoldings.map(h => h.symbol));
+  const candidates = stockList.filter(s => !ownedSymbols.has(s));
+
+  // Score all candidates and pick the best ones
+  const scored = [];
+  for (const symbol of candidates) {
+    try {
+      const [candleData, news, quote] = await Promise.all([
+        getCandles(symbol),
+        getNews(symbol),
+        getQuote(symbol)
+      ]);
+      if (!candleData || !quote.price) continue;
+
+      const closes = candleData.c;
+      const rsi = calcRSI(closes);
+      const macd = calcMACD(closes);
+      const techScore = scoreTechnical(rsi, macd, riskLevel);
+      const momentumScore = scoreMomentum(closes);
+      const sentimentResult = await scoreSentiment(base44, symbol, news);
+      const sentimentScore = typeof sentimentResult === "object" ? sentimentResult.score : sentimentResult;
+      const sentimentSummary = sentimentResult.summary || "";
+      const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
+
+      scored.push({ symbol, quote, closes, rsi, techScore, momentumScore, sentimentScore, sentimentSummary, finalScore });
+    } catch (err) {
+      console.error(`Scoring failed for ${symbol}:`, err.message);
+    }
+  }
+
+  // Sort by score descending, take up to maxPositions slots
+  scored.sort((a, b) => b.finalScore - a.finalScore);
+  const slots = params.maxPositions - currentPositions;
+  const selected = scored.slice(0, slots);
+
+  // Distribute capital proportionally among selected
+  const totalScore = selected.reduce((s, c) => s + c.finalScore, 0);
+
+  let remainingCash = investableCash;
+  for (const c of selected) {
+    const proportion = totalScore > 0 ? c.finalScore / totalScore : 1 / selected.length;
+    const amountToInvest = Math.min(investableCash * proportion, remainingCash, totalAICapital * params.maxPositionPct);
+    if (amountToInvest < 1) continue;
+
+    const shares = amountToInvest / c.quote.price;
+    const totalCost = shares * c.quote.price;
+
+    const modeLabel = mode === "initial" ? "despliegue inicial" : "nuevos fondos detectados";
+
+    await Promise.all([
+      base44.asServiceRole.entities.Transaction.create({
+        type: "buy",
+        symbol: c.symbol,
+        company_name: c.symbol,
+        shares,
+        price: c.quote.price,
+        total_amount: totalCost,
+        ai_reasoning: `Compra por ${modeLabel}. RSI: ${c.rsi?.toFixed(1) ?? "N/A"}. Sentimiento: ${c.sentimentSummary}. Puntajes — Técnico: ${c.techScore.toFixed(0)}/100, Momentum: ${c.momentumScore.toFixed(0)}/100, Sentimiento: ${c.sentimentScore.toFixed(0)}/100. Puntaje final: ${c.finalScore.toFixed(1)}. Invierto $${totalCost.toFixed(2)} (${(proportion * 100).toFixed(0)}% del capital disponible).`,
+        score_technical: Math.round(c.techScore),
+        score_fundamental: 0,
+        score_sentiment: Math.round(c.sentimentScore),
+        score_final: Math.round(c.finalScore),
+        executed_at: new Date().toISOString()
+      }),
+      base44.asServiceRole.entities.Holding.create({
+        symbol: c.symbol,
+        company_name: c.symbol,
+        shares,
+        avg_buy_price: c.quote.price,
+        current_price: c.quote.price,
+        current_value: totalCost,
+        unrealized_pnl: 0,
+        unrealized_pnl_pct: 0
+      }),
+      base44.asServiceRole.entities.Alert.create({
+        type: "buy",
+        symbol: c.symbol,
+        message: `📥 ${mode === "initial" ? "Despliegue inicial" : "Nuevos fondos"}: ${c.symbol} a $${c.quote.price.toFixed(2)} — ${shares.toFixed(4)} acciones ($${totalCost.toFixed(2)}). Score: ${c.finalScore.toFixed(0)}/100`,
+        is_read: false
+      })
+    ]);
+
+    await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+      liquid_cash: Math.max(0, (wallet.liquid_cash || 0) - totalCost)
+    });
+
+    // Reload wallet liquid cash for next iteration
+    wallet.liquid_cash = Math.max(0, (wallet.liquid_cash || 0) - totalCost);
+    remainingCash -= totalCost;
+    decisions.push({ action: "buy", symbol: c.symbol, score: c.finalScore, amount: totalCost });
+  }
+
+  return decisions;
+}
+
 // ─── Core AI cycle ────────────────────────────────────────────────────────────
 
 async function runAICycle(base44) {
@@ -194,17 +302,37 @@ async function runAICycle(base44) {
 
   // 2. Check if market is open
   if (!isMarketOpen()) {
-    return { skipped: true, reason: "Market is closed" };
+    return { skipped: true, reason: "Market is closed", initial_pending: config.initial_investment_pending };
   }
 
-  // 3. Timing gate: only run if enough time has passed since last analysis
+  // 3a. INITIAL DEPLOYMENT: if this is the first time with capital
+  if (config.initial_investment_pending && (wallet.liquid_cash || 0) > 0) {
+    const decisions = await deployCapital(base44, config, wallet, params, stockList, riskLevel, "initial");
+
+    await base44.asServiceRole.entities.UserConfig.update(config.id, {
+      initial_investment_pending: false,
+      last_ai_run: new Date().toISOString()
+    });
+
+    if (decisions.length > 0) {
+      await base44.asServiceRole.entities.Alert.create({
+        type: "info",
+        message: `🚀 Capital inicial desplegado. La IA compró ${decisions.length} posición(es): ${decisions.map(d => d.symbol).join(", ")}.`,
+        is_read: false
+      });
+    }
+
+    return { success: true, mode: "initial_deployment", decisions };
+  }
+
+  // 3b. Timing gate for regular cycles
   const lastRun = config.last_ai_run ? new Date(config.last_ai_run) : null;
   const minutesSinceLastRun = lastRun ? (Date.now() - lastRun.getTime()) / 60000 : Infinity;
   if (minutesSinceLastRun < params.analysisMinutes) {
     return { skipped: true, reason: `Only ${minutesSinceLastRun.toFixed(1)} min since last run, need ${params.analysisMinutes}` };
   }
 
-  // 4. Available capital (ai_capital = cash available to invest + value of holdings)
+  // 4. Available capital
   const totalAICapital = wallet.ai_capital || 0;
   const liquidCash = wallet.liquid_cash || 0;
   const reserveFloor = totalAICapital * 0.05; // 5% reserve

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import PageHeader from "@/components/shared/PageHeader";
+import { base44 } from "@/api/base44Client";
 import {
   TrendingUp,
   TrendingDown,
@@ -10,7 +11,8 @@ import {
   Briefcase,
   ArrowUpRight,
   ArrowDownRight,
-  Activity
+  Activity,
+  Clock
 } from "lucide-react";
 
 function StatCard({ label, value, change, positive, icon: Icon, delay }) {
