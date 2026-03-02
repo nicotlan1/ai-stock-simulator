@@ -1,0 +1,457 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+
+const API_KEY = Deno.env.get("API_Finnhub");
+const BASE = "https://finnhub.io/api/v1";
+
+// ─── Finnhub helpers ──────────────────────────────────────────────────────────
+
+async function finnhubGet(path) {
+  const url = `${BASE}${path}&token=${API_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Finnhub ${res.status}: ${path}`);
+  return res.json();
+}
+
+function isMarketOpen() {
+  const now = new Date();
+  const eastern = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const day = eastern.getDay();
+  const time = eastern.getHours() * 60 + eastern.getMinutes();
+  if (day === 0 || day === 6) return false;
+  return time >= 570 && time < 960;
+}
+
+async function getCandles(symbol) {
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - 35 * 24 * 60 * 60; // 35 days to guarantee 30 trading days
+  const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}`);
+  if (data.s !== "ok" || !data.c || data.c.length < 14) return null;
+  return data;
+}
+
+async function getNews(symbol) {
+  const today = new Date();
+  const from = new Date(today - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const to = today.toISOString().split("T")[0];
+  const data = await finnhubGet(`/company-news?symbol=${symbol}&from=${from}&to=${to}`);
+  return (data || []).slice(0, 5);
+}
+
+async function getQuote(symbol) {
+  const data = await finnhubGet(`/quote?symbol=${symbol}`);
+  return { price: data.c, change: data.d, changePct: data.dp, prevClose: data.pc };
+}
+
+// ─── Technical Analysis ───────────────────────────────────────────────────────
+
+function calcRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function calcEMA(data, period) {
+  const k = 2 / (period + 1);
+  let ema = data[0];
+  for (let i = 1; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+function calcMACD(closes) {
+  if (closes.length < 26) return null;
+  // Calculate MACD line for last two points to detect crossover
+  const macdCurrent = calcEMA(closes, 12) - calcEMA(closes, 26);
+  const macdPrev = calcEMA(closes.slice(0, -1), 12) - calcEMA(closes.slice(0, -1), 26);
+  // Signal line (9-period EMA of MACD) approximated
+  const signalCurrent = calcEMA(closes.slice(-9).map((_, i, arr) => {
+    const sub = closes.slice(0, closes.length - 9 + i + 1);
+    return calcEMA(sub, 12) - calcEMA(sub, 26);
+  }), 9);
+  return { macdCurrent, macdPrev, signalCurrent, crossingUp: macdPrev < signalCurrent && macdCurrent >= signalCurrent };
+}
+
+function scoreTechnical(rsi, macd, riskLevel) {
+  if (rsi === null) return 50; // neutral if no data
+
+  const thresholds = {
+    conservative:     { rsiBuy: 35, rsiSell: 65 },
+    moderate:         { rsiBuy: 40, rsiSell: 60 },
+    aggressive:       { rsiBuy: 45, rsiSell: 55 },
+    ultra_aggressive: { rsiBuy: 50, rsiSell: 55 }
+  };
+  const t = thresholds[riskLevel] || thresholds.moderate;
+
+  let score = 50;
+
+  // RSI component (0-100 → -25 to +25)
+  if (rsi < t.rsiBuy) score += 25 * ((t.rsiBuy - rsi) / t.rsiBuy);
+  else if (rsi > t.rsiSell) score -= 25 * ((rsi - t.rsiSell) / (100 - t.rsiSell));
+
+  // MACD component (boost ±15)
+  if (macd) {
+    if (macd.crossingUp) score += 15;
+    else if (!macd.crossingUp && macd.macdCurrent < macd.signalCurrent) score -= 15;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+// ─── Momentum Analysis ────────────────────────────────────────────────────────
+
+function scoreMomentum(closes) {
+  if (!closes || closes.length < 6) return 50;
+  const current = closes[closes.length - 1];
+  const fiveDaysAgo = closes[closes.length - 6];
+  if (!fiveDaysAgo) return 50;
+  const changePct = ((current - fiveDaysAgo) / fiveDaysAgo) * 100;
+
+  if (changePct > 5) return 85;
+  if (changePct > 2) return 65;
+  if (changePct > -2) return 50;
+  if (changePct > -5) return 35;
+  return 15;
+}
+
+// ─── Sentiment Analysis via LLM ───────────────────────────────────────────────
+
+async function scoreSentiment(base44, symbol, news) {
+  if (!news || news.length === 0) return 50;
+
+  const headlines = news.map(n => n.headline).join("\n");
+  const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
+    prompt: `Analyze the sentiment of these financial news headlines for ${symbol}. 
+Return a single sentiment score from 0 to 100 where:
+- 0-20 = very negative (fraud, crash, investigation, major losses)
+- 20-40 = negative (misses, downgrades, declining revenue)
+- 40-60 = neutral (mixed or unclear news)
+- 60-80 = positive (growth, partnerships, upgrades, beats)
+- 80-100 = very positive (record results, breakthroughs, major wins)
+
+Headlines:
+${headlines}
+
+Respond ONLY with a JSON object: {"score": <number>, "summary": "<one sentence>"}`,
+    response_json_schema: {
+      type: "object",
+      properties: {
+        score: { type: "number" },
+        summary: { type: "string" }
+      }
+    }
+  });
+
+  return { score: result.score ?? 50, summary: result.summary ?? "" };
+}
+
+// ─── Risk profile parameters ──────────────────────────────────────────────────
+
+const RISK_PARAMS = {
+  conservative:     { maxPositionPct: 0.15, maxPositions: 7,  stopLossPct: 0.04, analysisMinutes: 60, buyThreshold: 68, sellThreshold: 32 },
+  moderate:         { maxPositionPct: 0.25, maxPositions: 5,  stopLossPct: 0.08, analysisMinutes: 30, buyThreshold: 65, sellThreshold: 35 },
+  aggressive:       { maxPositionPct: 0.35, maxPositions: 3,  stopLossPct: 0.12, analysisMinutes: 20, buyThreshold: 62, sellThreshold: 38 },
+  ultra_aggressive: { maxPositionPct: 0.50, maxPositions: 2,  stopLossPct: 0.18, analysisMinutes: 15, buyThreshold: 60, sellThreshold: 40 }
+};
+
+// ─── Stock universe ───────────────────────────────────────────────────────────
+
+const STOCK_LISTS = {
+  conservative:     ["AAPL", "MSFT", "GOOGL", "AMZN", "JPM", "JNJ", "V", "PG"],
+  moderate:         ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "AMD"],
+  aggressive:       ["NVDA", "TSLA", "AMD", "COIN", "PLTR", "MSTR", "SMCI", "META", "AMZN", "MSFT"],
+  ultra_aggressive: ["NVDA", "TSLA", "COIN", "PLTR", "MSTR", "SMCI", "AMD", "RIVN", "SOUN", "RKLB"]
+};
+
+// ─── Core AI cycle ────────────────────────────────────────────────────────────
+
+async function runAICycle(base44) {
+  // 1. Load config & wallet (get first record for this user)
+  const [configs, wallets, holdings] = await Promise.all([
+    base44.asServiceRole.entities.UserConfig.list(),
+    base44.asServiceRole.entities.Wallet.list(),
+    base44.asServiceRole.entities.Holding.list()
+  ]);
+
+  if (!configs.length || !wallets.length) {
+    return { skipped: true, reason: "No config or wallet found" };
+  }
+
+  const config = configs[0];
+  const wallet = wallets[0];
+  const riskLevel = config.risk_level || "moderate";
+  const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
+  const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
+
+  // 2. Check if market is open
+  if (!isMarketOpen()) {
+    return { skipped: true, reason: "Market is closed" };
+  }
+
+  // 3. Timing gate: only run if enough time has passed since last analysis
+  const lastRun = config.last_ai_run ? new Date(config.last_ai_run) : null;
+  const minutesSinceLastRun = lastRun ? (Date.now() - lastRun.getTime()) / 60000 : Infinity;
+  if (minutesSinceLastRun < params.analysisMinutes) {
+    return { skipped: true, reason: `Only ${minutesSinceLastRun.toFixed(1)} min since last run, need ${params.analysisMinutes}` };
+  }
+
+  // 4. Available capital (ai_capital = cash available to invest + value of holdings)
+  const totalAICapital = wallet.ai_capital || 0;
+  const liquidCash = wallet.liquid_cash || 0;
+  const reserveFloor = totalAICapital * 0.05; // 5% reserve
+  const investableCash = Math.max(0, liquidCash - reserveFloor);
+
+  const decisions = [];
+
+  // 5. STOP-LOSS CHECK on existing holdings ─────────────────────────────────
+  for (const holding of holdings) {
+    try {
+      const quote = await getQuote(holding.symbol);
+      const currentPrice = quote.price;
+      const lossPct = (currentPrice - holding.avg_buy_price) / holding.avg_buy_price;
+
+      if (lossPct <= -params.stopLossPct) {
+        // Execute stop-loss sell
+        const totalValue = currentPrice * holding.shares;
+        const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
+
+        await Promise.all([
+          base44.asServiceRole.entities.Transaction.create({
+            type: "sell",
+            symbol: holding.symbol,
+            company_name: holding.company_name || holding.symbol,
+            shares: holding.shares,
+            price: currentPrice,
+            total_amount: totalValue,
+            realized_pnl: realizedPnl,
+            ai_reasoning: `STOP-LOSS activado. Precio actual $${currentPrice.toFixed(2)} representa una caída de ${(lossPct * 100).toFixed(2)}% desde el precio promedio de compra $${holding.avg_buy_price.toFixed(2)}. Límite de riesgo: -${(params.stopLossPct * 100).toFixed(0)}%.`,
+            score_technical: 0,
+            score_fundamental: 0,
+            score_sentiment: 0,
+            score_final: 0,
+            executed_at: new Date().toISOString()
+          }),
+          base44.asServiceRole.entities.Holding.delete(holding.id),
+          base44.asServiceRole.entities.Alert.create({
+            type: "stop_loss",
+            symbol: holding.symbol,
+            message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
+            is_read: false
+          })
+        ]);
+
+        // Return cash to liquid
+        await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+          liquid_cash: (wallet.liquid_cash || 0) + totalValue
+        });
+
+        decisions.push({ action: "stop_loss", symbol: holding.symbol, price: currentPrice, pnl: realizedPnl });
+      } else {
+        // Update current price on holding
+        await base44.asServiceRole.entities.Holding.update(holding.id, {
+          current_price: currentPrice,
+          current_value: currentPrice * holding.shares,
+          unrealized_pnl: (currentPrice - holding.avg_buy_price) * holding.shares,
+          unrealized_pnl_pct: lossPct * 100
+        });
+      }
+    } catch (err) {
+      console.error(`Stop-loss check failed for ${holding.symbol}:`, err.message);
+    }
+  }
+
+  // Reload holdings after stop-loss executions
+  const activeHoldings = await base44.asServiceRole.entities.Holding.list();
+  const holdingMap = {};
+  activeHoldings.forEach(h => { holdingMap[h.symbol] = h; });
+
+  // 6. SELL ANALYSIS on current holdings ────────────────────────────────────
+  for (const holding of activeHoldings) {
+    try {
+      const [candleData, news, quote] = await Promise.all([
+        getCandles(holding.symbol),
+        getNews(holding.symbol),
+        getQuote(holding.symbol)
+      ]);
+
+      const closes = candleData?.c || [];
+      const rsi = calcRSI(closes);
+      const macd = calcMACD(closes);
+      const techScore = scoreTechnical(rsi, macd, riskLevel);
+      const momentumScore = scoreMomentum(closes);
+      const sentimentResult = await scoreSentiment(base44, holding.symbol, news);
+      const sentimentScore = typeof sentimentResult === "object" ? sentimentResult.score : sentimentResult;
+      const sentimentSummary = sentimentResult.summary || "";
+
+      const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
+
+      if (finalScore < params.sellThreshold) {
+        const currentPrice = quote.price;
+        const totalValue = currentPrice * holding.shares;
+        const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
+
+        await Promise.all([
+          base44.asServiceRole.entities.Transaction.create({
+            type: "sell",
+            symbol: holding.symbol,
+            company_name: holding.company_name || holding.symbol,
+            shares: holding.shares,
+            price: currentPrice,
+            total_amount: totalValue,
+            realized_pnl: realizedPnl,
+            ai_reasoning: `Señal de venta detectada. RSI: ${rsi?.toFixed(1) ?? "N/A"} (alto = sobrecomprado). Momentum 5d: ${momentumScore < 50 ? "negativo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} cayó bajo el umbral de venta (${params.sellThreshold}).`,
+            score_technical: Math.round(techScore),
+            score_fundamental: 0,
+            score_sentiment: Math.round(sentimentScore),
+            score_final: Math.round(finalScore),
+            executed_at: new Date().toISOString()
+          }),
+          base44.asServiceRole.entities.Holding.delete(holding.id),
+          base44.asServiceRole.entities.Alert.create({
+            type: "sell",
+            symbol: holding.symbol,
+            message: `📤 Venta: ${holding.symbol} a $${currentPrice.toFixed(2)}. P&L: $${realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}. Score: ${finalScore.toFixed(0)}/100`,
+            is_read: false
+          })
+        ]);
+
+        await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+          liquid_cash: (wallet.liquid_cash || 0) + totalValue
+        });
+
+        decisions.push({ action: "sell", symbol: holding.symbol, score: finalScore, pnl: realizedPnl });
+      }
+    } catch (err) {
+      console.error(`Sell analysis failed for ${holding.symbol}:`, err.message);
+    }
+  }
+
+  // 7. BUY ANALYSIS on universe (only if under max positions) ───────────────
+  const currentHoldingsAfterSells = await base44.asServiceRole.entities.Holding.list();
+  const currentPositions = currentHoldingsAfterSells.length;
+
+  if (currentPositions < params.maxPositions && investableCash > 10) {
+    const ownedSymbols = new Set(currentHoldingsAfterSells.map(h => h.symbol));
+    const candidates = stockList.filter(s => !ownedSymbols.has(s));
+
+    for (const symbol of candidates) {
+      if (currentPositions + decisions.filter(d => d.action === "buy").length >= params.maxPositions) break;
+
+      try {
+        const [candleData, news, quote] = await Promise.all([
+          getCandles(symbol),
+          getNews(symbol),
+          getQuote(symbol)
+        ]);
+
+        if (!candleData || !quote.price) continue;
+
+        const closes = candleData.c;
+        const rsi = calcRSI(closes);
+        const macd = calcMACD(closes);
+        const techScore = scoreTechnical(rsi, macd, riskLevel);
+        const momentumScore = scoreMomentum(closes);
+        const sentimentResult = await scoreSentiment(base44, symbol, news);
+        const sentimentScore = typeof sentimentResult === "object" ? sentimentResult.score : sentimentResult;
+        const sentimentSummary = sentimentResult.summary || "";
+
+        const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
+
+        if (finalScore >= params.buyThreshold) {
+          const positionSize = totalAICapital * params.maxPositionPct;
+          const amountToInvest = Math.min(positionSize, investableCash);
+          if (amountToInvest < 1) continue;
+
+          const shares = amountToInvest / quote.price;
+          const totalCost = shares * quote.price;
+
+          await Promise.all([
+            base44.asServiceRole.entities.Transaction.create({
+              type: "buy",
+              symbol,
+              company_name: symbol,
+              shares,
+              price: quote.price,
+              total_amount: totalCost,
+              ai_reasoning: `Señal de compra detectada en ${symbol}. RSI: ${rsi?.toFixed(1) ?? "N/A"} (bajo = potencial de subida). Momentum 5d: ${momentumScore > 60 ? "positivo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} superó el umbral de compra (${params.buyThreshold}). Invierto $${totalCost.toFixed(2)} (${(params.maxPositionPct * 100).toFixed(0)}% del portafolio).`,
+              score_technical: Math.round(techScore),
+              score_fundamental: 0,
+              score_sentiment: Math.round(sentimentScore),
+              score_final: Math.round(finalScore),
+              executed_at: new Date().toISOString()
+            }),
+            base44.asServiceRole.entities.Holding.create({
+              symbol,
+              company_name: symbol,
+              shares,
+              avg_buy_price: quote.price,
+              current_price: quote.price,
+              current_value: totalCost,
+              unrealized_pnl: 0,
+              unrealized_pnl_pct: 0
+            }),
+            base44.asServiceRole.entities.Alert.create({
+              type: "buy",
+              symbol,
+              message: `📥 Compra: ${symbol} a $${quote.price.toFixed(2)} — ${shares.toFixed(4)} acciones ($${totalCost.toFixed(2)}). Score: ${finalScore.toFixed(0)}/100`,
+              is_read: false
+            })
+          ]);
+
+          // Deduct from liquid cash
+          await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+            liquid_cash: Math.max(0, (wallet.liquid_cash || 0) - totalCost)
+          });
+
+          decisions.push({ action: "buy", symbol, score: finalScore, amount: totalCost });
+        }
+      } catch (err) {
+        console.error(`Buy analysis failed for ${symbol}:`, err.message);
+      }
+    }
+  }
+
+  // 8. Update last_ai_run timestamp
+  await base44.asServiceRole.entities.UserConfig.update(config.id, {
+    last_ai_run: new Date().toISOString()
+  });
+
+  // 9. Save performance snapshot
+  const allHoldings = await base44.asServiceRole.entities.Holding.list();
+  const investedValue = allHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
+  const totalPortfolio = (wallet.liquid_cash || 0) + investedValue;
+  const initialCapital = config.initial_capital || totalPortfolio;
+
+  await base44.asServiceRole.entities.PerformanceSnapshot.create({
+    timestamp: new Date().toISOString(),
+    total_portfolio_value: totalPortfolio,
+    available_cash: wallet.liquid_cash || 0,
+    invested_capital: investedValue,
+    total_pnl: totalPortfolio - initialCapital,
+    total_pnl_pct: ((totalPortfolio - initialCapital) / initialCapital) * 100
+  });
+
+  return { success: true, decisions, positions: allHoldings.length };
+}
+
+// ─── Entry point ──────────────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const result = await runAICycle(base44);
+    return Response.json(result);
+  } catch (error) {
+    console.error("AI Engine error:", error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});
