@@ -12,30 +12,45 @@ import MarketSummaryBar from "@/components/dashboard/MarketSummaryBar";
 import { getStocksForRisk } from "@/components/shared/useFinnhub";
 
 export default function Dashboard() {
-  const [config, setConfig] = useState(null);
-  const [wallet, setWallet] = useState(null);
-  const [holdings, setHoldings] = useState([]);
+  const [config, setConfig]       = useState(null);
+  const [wallet, setWallet]       = useState(null);
+  const [holdings, setHoldings]   = useState([]);
   const [snapshots, setSnapshots] = useState([]);
-  const [alerts, setAlerts] = useState([]);
+  const [alerts, setAlerts]       = useState([]);
   const [activeAction, setActiveAction] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]     = useState(true);
 
   const { open: marketOpen } = useMarketStatus();
 
-  // Load all data
+  // FIX: .list() sin parámetros posicionales incorrectos
+  // Ordenar y limitar en JS después
   const loadData = useCallback(async () => {
     const [configs, wallets, holdingsList, snapshotList, alertList] = await Promise.all([
-      base44.entities.UserConfig.list("-created_date", 1),
-      base44.entities.Wallet.list("-created_date", 1),
+      base44.entities.UserConfig.list(),
+      base44.entities.Wallet.list(),
       base44.entities.Holding.list(),
-      base44.entities.PerformanceSnapshot.list("-timestamp", 50),
-      base44.entities.Alert.list("-created_date", 5)
+      base44.entities.PerformanceSnapshot.list(),
+      base44.entities.Alert.list()
     ]);
+
     setConfig(configs[0] || null);
     setWallet(wallets[0] || null);
     setHoldings(holdingsList || []);
-    setSnapshots(snapshotList || []);
-    setAlerts(alertList || []);
+
+    // FIX: ordenar y limitar snapshots en JS
+    setSnapshots(
+      (snapshotList || [])
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+        .slice(-50)
+    );
+
+    // FIX: ordenar alertas por fecha y tomar las 5 más recientes
+    setAlerts(
+      (alertList || [])
+        .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+        .slice(0, 5)
+    );
+
     setLoading(false);
   }, []);
 
@@ -52,37 +67,45 @@ export default function Dashboard() {
   const symbols = holdings.map(h => h.symbol);
   const { quotes } = useQuotes(symbols.length > 0 ? symbols : null);
 
-  // Wallet action handler
+  // FIX: lógica de wallet corregida con campos correctos del schema
   const handleWalletAction = async (action, amount) => {
     if (!wallet) return;
     const updates = {};
-    let movementType = action;
 
     if (action === "deposit") {
-      updates.free_balance = (wallet.free_balance || 0) + amount;
+      // Depositar agrega a wallet_balance y aumenta net worth
+      updates.wallet_balance  = (wallet.wallet_balance  || 0) + amount;
+      updates.total_net_worth = (wallet.total_net_worth || 0) + amount;
+
     } else if (action === "send_to_ai") {
-      if (amount > wallet.free_balance) return;
-      updates.free_balance = (wallet.free_balance || 0) - amount;
-      updates.ai_capital = (wallet.ai_capital || 0) + amount;
-      updates.liquid_cash = (wallet.liquid_cash || 0) + amount;
+      // Enviar a IA mueve de wallet_balance a ai_capital + liquid_cash
+      if (amount > (wallet.wallet_balance || 0)) return;
+      updates.wallet_balance = (wallet.wallet_balance || 0) - amount;
+      updates.ai_capital     = (wallet.ai_capital     || 0) + amount;
+      updates.liquid_cash    = (wallet.liquid_cash    || 0) + amount;
+      // Marcar pending para que aiEngine invierta en el próximo ciclo
+      if (config) {
+        await base44.entities.UserConfig.update(config.id, {
+          initial_investment_pending: true
+        });
+      }
+
     } else if (action === "withdraw_from_ai") {
-      if (amount > wallet.liquid_cash) return;
-      updates.free_balance = (wallet.free_balance || 0) + amount;
-      updates.liquid_cash = (wallet.liquid_cash || 0) - amount;
-      updates.ai_capital = Math.max(0, (wallet.ai_capital || 0) - amount);
+      // Retirar solo permite sacar del liquid_cash (posiciones ya cerradas)
+      if (amount > (wallet.liquid_cash || 0)) return;
+      updates.wallet_balance = (wallet.wallet_balance || 0) + amount;
+      updates.liquid_cash    = (wallet.liquid_cash    || 0) - amount;
+      updates.ai_capital     = Math.max(0, (wallet.ai_capital || 0) - amount);
     }
 
     await base44.entities.Wallet.update(wallet.id, updates);
-    await base44.entities.WalletMovement.create({
-      type: movementType,
-      amount,
-      resulting_balance: updates.free_balance ?? wallet.free_balance
-    });
 
-    // If sending to AI for the first time, mark initial_investment_pending
-    if (action === "send_to_ai" && config && config.initial_investment_pending) {
-      // Already pending, AI engine will pick it up on next run
-    }
+    // FIX: resulting_balance usa wallet_balance correcto
+    await base44.entities.WalletMovement.create({
+      type:              action,
+      amount,
+      resulting_balance: updates.wallet_balance ?? wallet.wallet_balance ?? 0
+    });
 
     setActiveAction(null);
     loadData();
