@@ -95,7 +95,6 @@ Deno.serve(async (req) => {
     }
 
     if (action === "spy") {
-      // SPY price for S&P500 comparison
       const data = await finnhubGet(`/quote?symbol=SPY`);
       return Response.json({
         symbol: "SPY",
@@ -103,6 +102,52 @@ Deno.serve(async (req) => {
         change: data.d,
         changePct: data.dp
       });
+    }
+
+    if (action === "indices") {
+      // Fetch SPY (S&P500), QQQ (NASDAQ), DIA (Dow Jones)
+      const [spy, qqq, dia] = await Promise.all([
+        finnhubGet(`/quote?symbol=SPY`),
+        finnhubGet(`/quote?symbol=QQQ`),
+        finnhubGet(`/quote?symbol=DIA`)
+      ]);
+      return Response.json({
+        indices: [
+          { symbol: "SPY", name: "S&P 500",    price: spy.c, change: spy.d, changePct: spy.dp, prevClose: spy.pc },
+          { symbol: "QQQ", name: "NASDAQ",     price: qqq.c, change: qqq.d, changePct: qqq.dp, prevClose: qqq.pc },
+          { symbol: "DIA", name: "Dow Jones",  price: dia.c, change: dia.d, changePct: dia.dp, prevClose: dia.pc }
+        ]
+      });
+    }
+
+    if (action === "candles_range") {
+      // Candles for different ranges: 1D (5m), 5D (15m), 1M (D), 3M (D)
+      const rangeMap = {
+        "1D":  { resolution: "5",  days: 1  },
+        "5D":  { resolution: "15", days: 5  },
+        "1M":  { resolution: "D",  days: 30 },
+        "3M":  { resolution: "D",  days: 90 }
+      };
+      const { resolution, days } = rangeMap[body.range] || rangeMap["1M"];
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - days * 24 * 60 * 60;
+      const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}`);
+      if (data.s !== "ok") return Response.json({ candles: [] });
+      const candles = (data.t || []).map((t, i) => ({
+        time: t,
+        open: data.o[i],
+        high: data.h[i],
+        low: data.l[i],
+        close: data.c[i],
+        volume: data.v[i]
+      }));
+      return Response.json({ candles });
+    }
+
+    if (action === "market_news") {
+      // General market news
+      const data = await finnhubGet(`/news?category=general`);
+      return Response.json({ news: (data || []).slice(0, 10) });
     }
 
     return Response.json({ error: "Unknown action" }, { status: 400 });
