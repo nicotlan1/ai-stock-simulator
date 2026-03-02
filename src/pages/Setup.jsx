@@ -21,6 +21,7 @@ function fmt(n) {
 }
 
 export default function Setup() {
+  const navigate = useNavigate();
   const [step, setStep]     = useState(0);
   const [saving, setSaving] = useState(false);
   const [totalCapital, setTotalCapital]   = useState("");
