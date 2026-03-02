@@ -126,7 +126,8 @@ Deno.serve(async (req) => {
           ]);
 
           if (wallet) {
-            const fw = (await base44.asServiceRole.entities.Wallet.list())[0];
+            const fwAll = await base44.asServiceRole.entities.Wallet.list();
+            const fw = fwAll.find(w => w.created_by === userEmail) || fwAll[0];
             await base44.asServiceRole.entities.Wallet.update(wallet.id, {
               liquid_cash: (fw.liquid_cash || 0) + totalValue,
               ai_capital: Math.max(0, (fw.ai_capital || 0) + realizedPnl)
