@@ -47,20 +47,17 @@ Deno.serve(async (req) => {
     }
 
     if (action === "quotes") {
-      // Multiple quotes at once
-      const results = await Promise.all(
-        (symbols || []).map(async (sym) => {
+      if (!symbols || symbols.length === 0) {
+        return Response.json({ error: "symbols array required" }, { status: 400 });
+      }
+      const results = await Promise.allSettled(
+        symbols.map(async (sym) => {
           const data = await finnhubGet(`/quote?symbol=${sym}`);
-          return {
-            symbol: sym,
-            price: data.c,
-            change: data.d,
-            changePct: data.dp,
-            prevClose: data.pc
-          };
+          return { symbol: sym, price: data.c, change: data.d, changePct: data.dp, prevClose: data.pc };
         })
       );
-      return Response.json({ quotes: results });
+      const quotes = results.filter(r => r.status === "fulfilled").map(r => r.value);
+      return Response.json({ quotes });
     }
 
     if (action === "candles") {
