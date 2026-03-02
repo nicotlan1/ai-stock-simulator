@@ -72,11 +72,7 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [setupDone, currentPageName]);
 
-  useEffect(() => {
-    if (setupDone === false && currentPageName !== "Setup") {
-      window.location.href = createPageUrl("Setup");
-    }
-  }, [setupDone, currentPageName]);
+
 
   if (currentPageName === "Setup") {
     return <div className="min-h-screen bg-[#0a0e1a]">{children}</div>;
