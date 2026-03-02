@@ -444,7 +444,8 @@ async function runAICycleForUser(base44, userEmail) {
         ]);
 
         // Return cash to liquid and adjust ai_capital
-        const freshWallet = (await base44.asServiceRole.entities.Wallet.list())[0];
+        const allFreshWallets1 = await base44.asServiceRole.entities.Wallet.list();
+        const freshWallet = allFreshWallets1.find(w => w.created_by === userEmail) || allFreshWallets1[0];
         await base44.asServiceRole.entities.Wallet.update(wallet.id, {
           liquid_cash: (freshWallet.liquid_cash || 0) + totalValue,
           ai_capital: Math.max(0, (freshWallet.ai_capital || 0) + realizedPnl)
