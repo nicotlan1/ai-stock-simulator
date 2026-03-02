@@ -403,7 +403,7 @@ async function runAICycleForUser(base44, userEmail) {
   const decisions = [];
 
   // 5. STOP-LOSS CHECK on existing holdings ─────────────────────────────────
-  const activeHoldingIds = new Set((await base44.asServiceRole.entities.Holding.list()).map(h => h.id));
+  const activeHoldingIds = new Set((await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail).map(h => h.id));
   for (const holding of holdings) {
     try {
       // Verify holding still exists before executing stop-loss (prevent double execution)
