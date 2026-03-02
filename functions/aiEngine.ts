@@ -242,10 +242,10 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
 
   const decisions = [];
   const allHoldingsNow = await base44.asServiceRole.entities.Holding.list();
-  const currentHoldings = allHoldingsNow.filter(h => h.created_by === userEmail);
-  const currentPositions = currentHoldings.length;
-  const ownedSymbols = new Set(currentHoldings.map(h => h.symbol));
-  const candidates = stockList.filter(s => !ownedSymbols.has(s));
+   const currentHoldings = allHoldingsNow.filter(h => h.user_id === userEmail || h.created_by === userEmail);
+   const currentPositions = currentHoldings.length;
+   const ownedSymbols = new Set(currentHoldings.map(h => h.symbol));
+   const candidates = stockList.filter(s => !ownedSymbols.has(s));
 
   // Score all candidates and pick the best ones
   const scored = [];
@@ -353,7 +353,7 @@ async function runAICycleForUser(base44, userEmail) {
 
   const configs  = allConfigs.filter(c => c.created_by === userEmail);
   const wallets  = allWallets.filter(w => w.created_by === userEmail);
-  const holdings = allHoldings.filter(h => h.created_by === userEmail);
+  const holdings = allHoldings.filter(h => h.user_id === userEmail || h.created_by === userEmail);
 
   if (!configs.length || !wallets.length) {
     return { skipped: true, reason: "No config or wallet found" };
@@ -409,7 +409,7 @@ async function runAICycleForUser(base44, userEmail) {
   const decisions = [];
 
   // 5. STOP-LOSS CHECK on existing holdings ─────────────────────────────────
-  const activeHoldingIds = new Set((await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail).map(h => h.id));
+  const activeHoldingIds = new Set((await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail).map(h => h.id));
   for (const holding of holdings) {
     try {
       // Verify holding still exists before executing stop-loss (prevent double execution)
@@ -475,7 +475,7 @@ async function runAICycleForUser(base44, userEmail) {
   }
 
   // Reload holdings after stop-loss executions
-  const activeHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
+  const activeHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
   const holdingMap = {};
   activeHoldings.forEach(h => { holdingMap[h.symbol] = h; });
 
@@ -547,9 +547,8 @@ async function runAICycleForUser(base44, userEmail) {
   }
 
   // 7. BUY ANALYSIS on universe (only if under max positions) ───────────────
-  const currentHoldingsAfterSells = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
+  const currentHoldingsAfterSells = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
   const currentPositions = currentHoldingsAfterSells.length;
-  console.log(`[BUY ANALYSIS] Current positions: ${currentPositions}/${params.maxPositions}, Fresh investable cash: $${freshInvestableCash.toFixed(2)}`);
 
   // Reload wallet to reflect cash freed by sells in section 6
   const allFreshWalletsForBuys = await base44.asServiceRole.entities.Wallet.list();
@@ -558,6 +557,8 @@ async function runAICycleForUser(base44, userEmail) {
   const freshTotalAICapital = freshWalletForBuys?.ai_capital || 0;
   const freshReserveFloor = freshTotalAICapital * 0.05;
   const freshInvestableCash = Math.max(0, freshLiquidCash - freshReserveFloor);
+
+  console.log(`[BUY ANALYSIS] Current positions: ${currentPositions}/${params.maxPositions}, Fresh investable cash: $${freshInvestableCash.toFixed(2)}`);
 
   if (currentPositions < params.maxPositions && freshInvestableCash > 10) {
     const ownedSymbols = new Set(currentHoldingsAfterSells.map(h => h.symbol));
@@ -654,7 +655,7 @@ async function runAICycleForUser(base44, userEmail) {
   console.log(`[UPDATE COMPLETE] last_ai_run updated successfully`);
 
   // 9. Save performance snapshot
-  const allHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.created_by === userEmail);
+  const allHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
   const investedValue = allHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
   const allFinalWallets = await base44.asServiceRole.entities.Wallet.list();
   const finalWallet = allFinalWallets.find(w => w.created_by === userEmail) || allFinalWallets[0];
