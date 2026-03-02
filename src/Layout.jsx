@@ -21,6 +21,35 @@ export default function Layout({ children, currentPageName }) {
   const [setupDone, setSetupDone] = useState(null);
   const marketStatus = useMarketStatus();
 
+  // Dynamic page title with net worth
+  useEffect(() => {
+    const updateTitle = async () => {
+      try {
+        const wallets = await base44.entities.Wallet.list("-created_date", 1);
+        const wallet = wallets[0];
+        if (wallet) {
+          const holdings = await base44.entities.Holding.list();
+          const invested = holdings.reduce((s, h) => s + (h.current_value || 0), 0);
+          const netWorth = (wallet.free_balance || 0) + (wallet.liquid_cash || 0) + invested;
+          const formatted = netWorth.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+          document.title = `$${formatted} | AI Stock Simulator`;
+        } else {
+          document.title = "AI Stock Simulator";
+        }
+      } catch {
+        document.title = "AI Stock Simulator";
+      }
+    };
+
+    if (setupDone && currentPageName !== "Setup") {
+      updateTitle();
+      const id = setInterval(updateTitle, 60000);
+      return () => clearInterval(id);
+    } else {
+      document.title = "AI Stock Simulator";
+    }
+  }, [setupDone, currentPageName]);
+
   useEffect(() => {
     const done = localStorage.getItem("ai_stock_setup_done");
     setSetupDone(!!done);
