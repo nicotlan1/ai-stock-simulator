@@ -8,18 +8,18 @@ import StockChart from "@/components/market/StockChart";
 import MarketNews from "@/components/market/MarketNews";
 
 export default function Market() {
-  const [indices, setIndices] = useState([]);
+  const [indices, setIndices]               = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(true);
-  const [config, setConfig] = useState(null);
-  const [holdings, setHoldings] = useState([]);
+  const [config, setConfig]                 = useState(null);
+  const [holdings, setHoldings]             = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
 
   const { open: marketOpen } = useMarketStatus();
 
-  // Load config + holdings
+  // FIX: .list() sin parámetros incorrectos
   useEffect(() => {
     Promise.all([
-      base44.entities.UserConfig.list("-created_date", 1),
+      base44.entities.UserConfig.list(),
       base44.entities.Holding.list()
     ]).then(([configs, hs]) => {
       setConfig(configs[0] || null);
@@ -29,12 +29,18 @@ export default function Market() {
 
   const stocks = config ? getStocksForRisk(config.risk_level) : STOCK_LISTS.moderate;
 
-  // Load indices
+  // FIX: try/catch para que un error de Finnhub no crashee la página
   const loadIndices = useCallback(async () => {
     setIndicesLoading(true);
-    const data = await callFinnhub("indices");
-    setIndices(data.indices || []);
-    setIndicesLoading(false);
+    try {
+      const data = await callFinnhub("indices");
+      setIndices(data.indices || []);
+    } catch (err) {
+      console.error("indices load failed:", err.message);
+      setIndices([]);
+    } finally {
+      setIndicesLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadIndices(); }, [loadIndices]);
@@ -45,10 +51,8 @@ export default function Market() {
     return () => clearInterval(id);
   }, [marketOpen, loadIndices]);
 
-  // Quotes for all stocks
   const { quotes, loading: quotesLoading } = useQuotes(stocks);
 
-  // Default selected symbol
   useEffect(() => {
     if (!selectedSymbol && stocks.length > 0) setSelectedSymbol(stocks[0]);
   }, [stocks]);
@@ -79,7 +83,6 @@ export default function Market() {
       <section className="mb-6">
         <p className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-3">Análisis de Acción</p>
         <div className="card-terminal p-5">
-          {/* Stock selector */}
           <div className="flex flex-wrap gap-2 mb-5">
             {stocks.map(sym => (
               <button
