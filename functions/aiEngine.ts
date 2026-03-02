@@ -570,9 +570,10 @@ async function runAICycle(base44) {
             })
           ]);
 
-          // Deduct from liquid cash
+          // Reload wallet from DB and deduct liquid cash
+          const freshWalletBuy = (await base44.asServiceRole.entities.Wallet.list())[0];
           await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-            liquid_cash: Math.max(0, (wallet.liquid_cash || 0) - totalCost)
+            liquid_cash: Math.max(0, (freshWalletBuy.liquid_cash || 0) - totalCost)
           });
 
           decisions.push({ action: "buy", symbol, score: finalScore, amount: totalCost });
