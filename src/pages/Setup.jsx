@@ -76,7 +76,7 @@ export default function Setup() {
       initial_capital:           aiNum,
       deadline_months:           deadlineMonths,
       required_monthly_return:   requiredMonthlyReturn,
-      risk_level:                riskProfile.level === "ultra_aggressive" ? "aggressive" : riskProfile.level,
+      risk_level:                riskProfile.level,
       estimated_probability:     riskProfile.prob,
       start_date:                today,
       initial_investment_pending: true
