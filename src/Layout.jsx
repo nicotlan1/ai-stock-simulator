@@ -168,6 +168,7 @@ export default function Layout({ children, currentPageName }) {
         </div>
         <div className="p-4 md:p-6 lg:p-8">{children}</div>
       </main>
+      {setupDone && currentPageName !== "Setup" && <AgentChat />}
     </div>
   );
 }
