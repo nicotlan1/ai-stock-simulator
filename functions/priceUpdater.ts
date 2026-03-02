@@ -23,6 +23,19 @@ function isMarketOpen() {
   return time >= 570 && time < 960;
 }
 
+function isAfterMarketClose() {
+  const now = new Date();
+  const eastern = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const day = eastern.getDay();
+  const time = eastern.getHours() * 60 + eastern.getMinutes();
+  if (day === 0 || day === 6) return false;
+  return time >= 960 && time < 1320; // 4pm–10pm EST
+}
+
+function todayEST() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+}
+
 const STOP_LOSS = {
   conservative:     0.04,
   moderate:         0.08,
