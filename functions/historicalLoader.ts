@@ -80,28 +80,29 @@ Deno.serve(async (req) => {
         let inserted = 0;
         let skipped = 0;
 
+        // Build list of new records to insert
+        const toInsert = [];
         for (const candle of candles) {
           const key = `${symbol}|${candle.date}`;
           if (existingSet.has(key)) { skipped++; continue; }
-
-          await base44.asServiceRole.entities.PriceHistory.create({
-            symbol,
-            date: candle.date,
-            open: candle.open,
-            high: candle.high,
-            low: candle.low,
-            close: candle.close,
-            volume: candle.volume
-          });
+          toInsert.push({ symbol, date: candle.date, open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume });
           existingSet.add(key);
-          inserted++;
+        }
+
+        // Insert in batches of 10 with 500ms delay between batches
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+          const batch = toInsert.slice(i, i + BATCH_SIZE);
+          await insertWithRetry(base44, batch);
+          inserted += batch.length;
+          if (i + BATCH_SIZE < toInsert.length) await delay(500);
         }
 
         results.push({ symbol, inserted, skipped, total: candles.length });
         console.log(`${symbol}: ${inserted} inserted, ${skipped} skipped`);
 
-        // Small delay to avoid rate limiting
-        await new Promise(r => setTimeout(r, 300));
+        // 1 second between symbols to avoid write bursts
+        await delay(1000);
       } catch (err) {
         console.error(`Failed for ${symbol}:`, err.message);
         results.push({ symbol, error: err.message });
