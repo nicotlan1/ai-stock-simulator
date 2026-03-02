@@ -602,11 +602,44 @@ async function runAICycle(base44) {
   return { success: true, decisions, positions: allHoldings.length };
 }
 
+// ─── Price updater (independent of AI cycle) ─────────────────────────────────
+
+async function updatePrices(base44) {
+  const holdings = await base44.asServiceRole.entities.Holding.list();
+  if (!holdings.length) return { updated: 0 };
+  let updated = 0;
+  for (const holding of holdings) {
+    try {
+      const quote = await getQuote(holding.symbol);
+      if (!quote.price) continue;
+      const currentPrice = quote.price;
+      const currentValue = currentPrice * holding.shares;
+      const unrealizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
+      const unrealizedPnlPct = ((currentPrice - holding.avg_buy_price) / holding.avg_buy_price) * 100;
+      await base44.asServiceRole.entities.Holding.update(holding.id, {
+        current_price: currentPrice,
+        current_value: currentValue,
+        unrealized_pnl: unrealizedPnl,
+        unrealized_pnl_pct: unrealizedPnlPct
+      });
+      updated++;
+    } catch (err) {
+      console.error(`Price update failed for ${holding.symbol}:`, err.message);
+    }
+  }
+  return { updated };
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
+    const body = await req.json().catch(() => ({}));
+    if (body.action === "updatePrices") {
+      const result = await updatePrices(base44);
+      return Response.json(result);
+    }
     const result = await runAICycle(base44);
     return Response.json(result);
   } catch (error) {
