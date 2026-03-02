@@ -603,7 +603,8 @@ async function runAICycle(base44) {
   // 9. Save performance snapshot
   const allHoldings = await base44.asServiceRole.entities.Holding.list();
   const investedValue = allHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
-  const totalPortfolio = (wallet.liquid_cash || 0) + investedValue;
+  const finalWallet = (await base44.asServiceRole.entities.Wallet.list())[0];
+  const totalPortfolio = (finalWallet?.liquid_cash || 0) + investedValue;
   const initialCapital = config.initial_capital || totalPortfolio;
 
   await base44.asServiceRole.entities.PerformanceSnapshot.create({
