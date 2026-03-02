@@ -20,7 +20,7 @@ function isNearMarketClose() {
   const day = eastern.getDay();
   const time = eastern.getHours() * 60 + eastern.getMinutes();
   if (day === 0 || day === 6) return false;
-  return time >= 955 && time <= 965; // 15:55–16:05 EST
+  return time >= 955 && time <= 965;
 }
 
 function isMarketOpen() {
@@ -32,9 +32,8 @@ function isMarketOpen() {
   return time >= 570 && time < 960;
 }
 
-
 function todayEST() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
 const STOP_LOSS = {
@@ -67,23 +66,24 @@ Deno.serve(async (req) => {
     const riskLevel = config.risk_level || "moderate";
     const stopLossPct = STOP_LOSS[riskLevel] || 0.08;
 
-    // FIX: cargar IDs una sola vez antes del loop
-    // para proteger contra race condition con aiEngine
     const activeIds = new Set(
       (await base44.asServiceRole.entities.Holding.list()).map(h => h.id)
     );
 
     const updated = [];
     const stopped = [];
-    const dailyCloseQuotes = {}; // symbol -> quote, for near-close saves
+    const dailyCloseQuotes = {};
 
     const nearClose = isNearMarketClose();
     const today = todayEST();
     let existingClosedSymbols = new Set();
 
+    // FIX: cargar lista completa y filtrar en JS
     if (nearClose) {
-      const existing = await base44.asServiceRole.entities.PriceHistory.filter({ date: today }, "-date", 200);
-      existingClosedSymbols = new Set(existing.map(r => r.symbol));
+      const existing = await base44.asServiceRole.entities.PriceHistory.list();
+      existingClosedSymbols = new Set(
+        existing.filter(r => r.date === today).map(r => r.symbol)
+      );
     }
 
     for (const holding of holdings) {
@@ -144,7 +144,6 @@ Deno.serve(async (req) => {
           });
           updated.push(holding.symbol);
 
-          // Save quote for daily close if near market close
           if (nearClose) {
             dailyCloseQuotes[holding.symbol] = quote;
           }
@@ -164,10 +163,10 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.PriceHistory.create({
             symbol,
             date: today,
-            open: quote.open ?? null,
-            high: quote.high ?? null,
-            low: quote.low ?? null,
-            close: quote.price,
+            open:   quote.open  ?? null,
+            high:   quote.high  ?? null,
+            low:    quote.low   ?? null,
+            close:  quote.price,
             volume: null
           });
           dailyCloses++;
