@@ -287,7 +287,8 @@ export default function Setup() {
           {step === 3 && (
             <button disabled={!canGoStep3 || saving} onClick={handleConfirm}
               className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              style={canGoStep3 ? { background: riskProfile.color, color: "#0a0e1a" } : { background: "#00ff88", color: "#0a0e1a" }}>
+              style={canGoStep3 ? { background: riskProfile.color, color: "#0a0e1a" } : { background: "#1a2240", color: "#475569" }}>
+              
               {saving
                 ? <><Zap className="w-4 h-4 animate-pulse" /> Guardando...</>
                 : <><CheckCircle className="w-4 h-4" /> Confirmar y Comenzar</>
