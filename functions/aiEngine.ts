@@ -360,10 +360,29 @@ async function runAICycleForUser(base44, userEmail) {
   }
 
   const config = configs[0];
-  const wallet = wallets[0];
-  const riskLevel = config.risk_level || "moderate";
-  const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
-  const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
+   const wallet = wallets[0];
+   const riskLevel = config.risk_level || "moderate";
+   const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
+   const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
+
+   // Market context from SP500History
+   const sp500History = await base44.asServiceRole.entities.SP500History.list('-timestamp', 1);
+   const spyChangeOrDefault = sp500History.length > 0 ? sp500History[0].spy_change_pct : 0;
+   let marketMode = "neutral";
+   if (spyChangeOrDefault < -2) marketMode = "bearish";
+   else if (spyChangeOrDefault > 2) marketMode = "bullish";
+
+   const adjustedBuyThreshold = marketMode === "bearish" 
+     ? params.buyThreshold + 10 
+     : marketMode === "bullish" 
+     ? params.buyThreshold - 5 
+     : params.buyThreshold;
+
+   const adjustedSellThreshold = marketMode === "bearish"
+     ? params.sellThreshold + 10
+     : params.sellThreshold;
+
+   const marketContext = `Contexto de mercado: SPY ${spyChangeOrDefault > 0 ? '+' : ''}${spyChangeOrDefault.toFixed(2)}% (modo ${marketMode}).`;
 
   // 2. Check if market is open
   if (!isMarketOpen()) {
@@ -500,7 +519,7 @@ async function runAICycleForUser(base44, userEmail) {
 
       const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
 
-      if (finalScore < params.sellThreshold) {
+      if (finalScore < adjustedSellThreshold) {
         const currentPrice = quote.price;
         const totalValue = currentPrice * holding.shares;
         const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
@@ -514,7 +533,7 @@ async function runAICycleForUser(base44, userEmail) {
             price: currentPrice,
             total_amount: totalValue,
             realized_pnl: realizedPnl,
-            ai_reasoning: `Señal de venta detectada. RSI: ${rsi?.toFixed(1) ?? "N/A"} (alto = sobrecomprado). Momentum 5d: ${momentumScore < 50 ? "negativo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} cayó bajo el umbral de venta (${params.sellThreshold}).`,
+            ai_reasoning: `Señal de venta detectada. RSI: ${rsi?.toFixed(1) ?? "N/A"} (alto = sobrecomprado). Momentum 5d: ${momentumScore < 50 ? "negativo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} cayó bajo el umbral de venta (${adjustedSellThreshold}). ${marketContext}`,
             score_technical: Math.round(techScore),
             score_fundamental: 0,
             score_sentiment: Math.round(sentimentScore),
@@ -587,7 +606,7 @@ async function runAICycleForUser(base44, userEmail) {
 
         const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
 
-        if (finalScore >= params.buyThreshold) {
+        if (finalScore >= adjustedBuyThreshold) {
           const positionSize = freshTotalAICapital * params.maxPositionPct;
           const amountToInvest = Math.min(positionSize, freshInvestableCash);
           if (amountToInvest < 1) continue;
@@ -603,7 +622,7 @@ async function runAICycleForUser(base44, userEmail) {
               shares,
               price: quote.price,
               total_amount: totalCost,
-              ai_reasoning: `Señal de compra detectada en ${symbol}. RSI: ${rsi?.toFixed(1) ?? "N/A"} (bajo = potencial de subida). Momentum 5d: ${momentumScore > 60 ? "positivo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} superó el umbral de compra (${params.buyThreshold}). Invierto $${totalCost.toFixed(2)} (${(params.maxPositionPct * 100).toFixed(0)}% del portafolio).`,
+              ai_reasoning: `Señal de compra detectada en ${symbol}. RSI: ${rsi?.toFixed(1) ?? "N/A"} (bajo = potencial de subida). Momentum 5d: ${momentumScore > 60 ? "positivo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} superó el umbral de compra (${adjustedBuyThreshold}). Invierto $${totalCost.toFixed(2)} (${(params.maxPositionPct * 100).toFixed(0)}% del portafolio). ${marketContext}`,
               score_technical: Math.round(techScore),
               score_fundamental: 0,
               score_sentiment: Math.round(sentimentScore),
