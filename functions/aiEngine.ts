@@ -546,7 +546,7 @@ async function runAICycle(base44) {
 
       try {
         const [candleData, news, quote] = await Promise.all([
-          getCandles(symbol),
+          getCandles(symbol, base44),
           getNews(symbol),
           getQuote(symbol)
         ]);
