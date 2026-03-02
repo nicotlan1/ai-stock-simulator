@@ -127,10 +127,10 @@ function scoreTechnical(rsi, macd, riskLevel) {
   if (rsi < t.rsiBuy) score += 25 * ((t.rsiBuy - rsi) / t.rsiBuy);
   else if (rsi > t.rsiSell) score -= 25 * ((rsi - t.rsiSell) / (100 - t.rsiSell));
 
-  // MACD component (boost ±15)
+  // MACD component (crossover ±15, neutral = no change)
   if (macd) {
     if (macd.crossingUp) score += 15;
-    else if (!macd.crossingUp && macd.macdCurrent < macd.signalCurrent) score -= 15;
+    else if (macd.crossingDown) score -= 15;
   }
 
   return Math.max(0, Math.min(100, score));
