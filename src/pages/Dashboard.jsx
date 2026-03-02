@@ -127,16 +127,46 @@ function RecentDecisions({ delay }) {
   );
 }
 
+function MarketClosedBanner() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#fbbf24]/10 border border-[#fbbf24]/20 mb-5"
+    >
+      <Clock className="w-4 h-4 text-[#fbbf24] flex-shrink-0" />
+      <p className="text-sm text-[#fbbf24] font-mono">
+        ⏳ Mercado cerrado. La IA desplegará tu capital el próximo día hábil a las 9:31am EST.
+      </p>
+    </motion.div>
+  );
+}
+
 export default function Dashboard() {
   const [config, setConfig] = useState({ initialCapital: 10000, goal: 50000 });
+  const [showMarketClosed, setShowMarketClosed] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("ai_stock_config");
     if (saved) setConfig(JSON.parse(saved));
   }, []);
 
+  // Check if initial investment is pending + market is closed → show banner
+  useEffect(() => {
+    async function checkPending() {
+      try {
+        const result = await base44.functions.invoke("aiEngine", {});
+        if (result?.data?.skipped && result?.data?.reason === "Market is closed" && result?.data?.initial_pending) {
+          setShowMarketClosed(true);
+        }
+      } catch {}
+    }
+    checkPending();
+  }, []);
+
   return (
     <div>
+      {showMarketClosed && <MarketClosedBanner />}
       <PageHeader
         title="Dashboard"
         subtitle="Vista general de tu simulación"
