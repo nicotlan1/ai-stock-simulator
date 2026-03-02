@@ -18,19 +18,28 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: true, reason: "Market not closed yet" });
     }
 
-    const [configs, wallets, holdings, transactions] = await Promise.all([
+    const [allConfigs, allWallets, allHoldings, allTransactions] = await Promise.all([
       base44.asServiceRole.entities.UserConfig.list(),
       base44.asServiceRole.entities.Wallet.list(),
       base44.asServiceRole.entities.Holding.list(),
       base44.asServiceRole.entities.Transaction.list()
     ]);
 
-    if (!configs.length || !wallets.length) {
+    if (!allConfigs.length || !allWallets.length) {
       return Response.json({ skipped: true, reason: "No config or wallet" });
     }
 
-    const config = configs[0];
-    const wallet = wallets[0];
+    // Process each user
+    const userEmails = [...new Set(allConfigs.map(c => c.created_by).filter(Boolean))];
+    const summaries = [];
+
+    for (const userEmail of userEmails) {
+      const config = allConfigs.find(c => c.created_by === userEmail);
+      const wallet = allWallets.find(w => w.created_by === userEmail);
+      if (!config || !wallet) continue;
+
+      const holdings = allHoldings.filter(h => h.created_by === userEmail);
+      const transactions = allTransactions.filter(t => t.created_by === userEmail);
 
     // FIX: ordenar y limitar en JS en lugar de pasar parámetros incorrectos
     const sortedTxs = transactions
