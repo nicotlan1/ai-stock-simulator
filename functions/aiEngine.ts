@@ -521,7 +521,8 @@ async function runAICycleForUser(base44, userEmail) {
           })
         ]);
 
-        const freshWalletSell = (await base44.asServiceRole.entities.Wallet.list())[0];
+        const allFreshWalletsSell = await base44.asServiceRole.entities.Wallet.list();
+        const freshWalletSell = allFreshWalletsSell.find(w => w.created_by === userEmail) || allFreshWalletsSell[0];
         await base44.asServiceRole.entities.Wallet.update(wallet.id, {
           liquid_cash: (freshWalletSell.liquid_cash || 0) + totalValue,
           ai_capital: Math.max(0, (freshWalletSell.ai_capital || 0) + realizedPnl)
