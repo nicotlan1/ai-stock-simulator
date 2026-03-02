@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "@/components/shared/PageHeader";
 import ActionPanel from "@/components/wallet/ActionPanel";
+import SendToAIModal from "@/components/wallet/SendToAIModal";
 import {
   WalletIcon, Send, ArrowDownLeft, PlusCircle,
   TrendingUp, ArrowDownRight, ArrowUpRight, RefreshCw, Banknote
@@ -43,17 +44,21 @@ const TX_CONFIG = {
 
 export default function Wallet() {
   const [wallet, setWallet]             = useState(null);
+  const [config, setConfig]             = useState(null);
   const [movements, setMovements]       = useState([]);
   const [activeAction, setActiveAction] = useState(null);
+  const [sendToAIAmount, setSendToAIAmount] = useState(null);
   const [loading, setLoading]           = useState(true);
 
   const loadData = useCallback(async () => {
     const user = await base44.auth.me();
-    const [wallets, movs] = await Promise.all([
+    const [wallets, configs, movs] = await Promise.all([
       base44.entities.Wallet.filter({ created_by: user.email }),
+      base44.entities.UserConfig.filter({ created_by: user.email }),
       base44.entities.WalletMovement.list("-created_date", 50)
     ]);
     setWallet(wallets[0] || null);
+    setConfig(configs[0] || null);
     setMovements(movs || []);
     setLoading(false);
   }, []);
@@ -70,19 +75,19 @@ export default function Wallet() {
 
   const handleConfirm = async (action, amount) => {
     if (!wallet) return;
+    
+    // send_to_ai abre el modal en lugar de ejecutar directamente
+    if (action === "send_to_ai") {
+      setSendToAIAmount(amount);
+      return;
+    }
+
     const updates = {};
     let resulting = 0;
 
     if (action === "deposit") {
       updates.free_balance = (wallet.free_balance || 0) + amount;
       updates.net_worth    = (wallet.net_worth    || 0) + amount;
-      resulting = updates.free_balance;
-
-    } else if (action === "send_to_ai") {
-      if (amount > (wallet.free_balance || 0)) return;
-      updates.free_balance = (wallet.free_balance || 0) - amount;
-      updates.ai_capital   = (wallet.ai_capital   || 0) + amount;
-      updates.liquid_cash  = (wallet.liquid_cash  || 0) + amount;
       resulting = updates.free_balance;
 
     } else if (action === "withdraw_from_ai") {
@@ -205,6 +210,19 @@ export default function Wallet() {
           wallet={wallet}
           onConfirm={handleConfirm}
           onClose={() => setActiveAction(null)}
+        />
+      )}
+      
+      {sendToAIAmount !== null && (
+        <SendToAIModal
+          wallet={wallet}
+          config={config}
+          amount={sendToAIAmount}
+          onClose={() => setSendToAIAmount(null)}
+          onSuccess={() => {
+            setSendToAIAmount(null);
+            loadData();
+          }}
         />
       )}
     </div>
