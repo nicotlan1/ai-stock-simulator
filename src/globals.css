@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --terminal-bg: #0a0e1a;
+  --terminal-card: #0f1629;
+  --terminal-border: #1a2240;
+  --terminal-border-hover: #243056;
+  --neon-green: #00ff88;
+  --neon-green-dim: #00cc6a;
+  --neon-red: #ff4757;
+  --neon-red-dim: #cc3945;
+  --neon-blue: #3b82f6;
+  --neon-yellow: #fbbf24;
+  --text-primary: #e2e8f0;
+  --text-secondary: #64748b;
+  --text-muted: #475569;
+}
+
+body {
+  background-color: var(--terminal-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--terminal-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--terminal-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--terminal-border-hover);
+}
+
+/* Glow effects */
+.glow-green {
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.glow-red {
+  text-shadow: 0 0 10px rgba(255, 71, 87, 0.3);
+}
+
+.card-terminal {
+  background: var(--terminal-card);
+  border: 1px solid var(--terminal-border);
+  border-radius: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.card-terminal:hover {
+  border-color: var(--terminal-border-hover);
+}
+
+/* Pulse animation for live indicator */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Scanline effect subtle */
+.scanline::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 136, 0.01) 2px,
+    rgba(0, 255, 136, 0.01) 4px
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
