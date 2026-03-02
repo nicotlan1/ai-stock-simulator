@@ -4,15 +4,8 @@ import { base44 } from "@/api/base44Client";
 import PageHeader from "@/components/shared/PageHeader";
 import ActionPanel from "@/components/wallet/ActionPanel";
 import {
-  WalletIcon,
-  Send,
-  ArrowDownLeft,
-  PlusCircle,
-  TrendingUp,
-  ArrowDownRight,
-  ArrowUpRight,
-  RefreshCw,
-  Banknote
+  WalletIcon, Send, ArrowDownLeft, PlusCircle,
+  TrendingUp, ArrowDownRight, ArrowUpRight, RefreshCw, Banknote
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -43,67 +36,76 @@ function MetricCard({ label, value, icon: Icon, color, delay }) {
 }
 
 const TX_CONFIG = {
-  deposit:          { label: "Depósito",        color: "#00ff88", sign: "+", Icon: ArrowDownRight },
-  send_to_ai:       { label: "Enviado a IA",    color: "#3b82f6", sign: "−", Icon: Send },
-  withdraw_from_ai: { label: "Retiro de IA",    color: "#fbbf24", sign: "+", Icon: ArrowDownLeft },
-  withdraw:         { label: "Retiro",          color: "#ff4757", sign: "−", Icon: ArrowUpRight }
+  deposit:          { label: "Depósito",      color: "#00ff88", sign: "+", Icon: ArrowDownRight },
+  send_to_ai:       { label: "Enviado a IA",  color: "#3b82f6", sign: "−", Icon: Send },
+  withdraw_from_ai: { label: "Retiro de IA",  color: "#fbbf24", sign: "+", Icon: ArrowDownLeft },
+  withdraw:         { label: "Retiro",        color: "#ff4757", sign: "−", Icon: ArrowUpRight }
 };
 
 export default function Wallet() {
-  const [wallet, setWallet] = useState(null);
-  const [movements, setMovements] = useState([]);
-  const [activeAction, setActiveAction] = useState(null); // "deposit" | "send_to_ai" | "withdraw_from_ai"
-  const [loading, setLoading] = useState(true);
+  const [wallet, setWallet]           = useState(null);
+  const [movements, setMovements]     = useState([]);
+  const [activeAction, setActiveAction] = useState(null);
+  const [loading, setLoading]         = useState(true);
 
+  // FIX: .list() sin parámetros incorrectos, ordenar en JS
   const loadData = useCallback(async () => {
     const [wallets, movs] = await Promise.all([
-      base44.entities.Wallet.list("-updated_date", 1),
-      base44.entities.WalletMovement.list("-created_date", 50)
+      base44.entities.Wallet.list(),
+      base44.entities.WalletMovement.list()
     ]);
     setWallet(wallets[0] || null);
-    setMovements(movs);
+    setMovements(
+      (movs || [])
+        .sort((a, b) => new Date(b.created_date) - new Date(a.created_date))
+        .slice(0, 50)
+    );
     setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Total withdrawn = sum of all withdraw movements
   const totalWithdrawn = movements
     .filter(m => m.type === "withdraw")
     .reduce((acc, m) => acc + (m.amount || 0), 0);
 
-  const netWorth = (wallet?.free_balance || 0) + (wallet?.ai_capital || 0) + (wallet?.liquid_cash || 0);
+  // FIX: usar campos correctos del schema
+  const netWorth = wallet?.total_net_worth ||
+    ((wallet?.wallet_balance || 0) + (wallet?.ai_capital || 0));
 
   const handleConfirm = async (action, amount) => {
     if (!wallet) return;
-
-    let newWallet = { ...wallet };
-    let movType = action;
+    const updates = {};
     let resulting = 0;
 
     if (action === "deposit") {
-      newWallet.free_balance = (newWallet.free_balance || 0) + amount;
-      newWallet.net_worth = (newWallet.net_worth || 0) + amount;
-      resulting = newWallet.free_balance;
+      updates.wallet_balance  = (wallet.wallet_balance  || 0) + amount;
+      updates.total_net_worth = (wallet.total_net_worth || 0) + amount;
+      resulting = updates.wallet_balance;
+
     } else if (action === "send_to_ai") {
-      newWallet.free_balance = (newWallet.free_balance || 0) - amount;
-      newWallet.ai_capital   = (newWallet.ai_capital   || 0) + amount;
-      resulting = newWallet.free_balance;
+      if (amount > (wallet.wallet_balance || 0)) return;
+      updates.wallet_balance = (wallet.wallet_balance || 0) - amount;
+      updates.ai_capital     = (wallet.ai_capital     || 0) + amount;
+      updates.liquid_cash    = (wallet.liquid_cash    || 0) + amount;
+      resulting = updates.wallet_balance;
+
     } else if (action === "withdraw_from_ai") {
-      newWallet.liquid_cash  = (newWallet.liquid_cash  || 0) - amount;
-      newWallet.ai_capital   = (newWallet.ai_capital   || 0) - amount;
-      newWallet.free_balance = (newWallet.free_balance || 0) + amount;
-      resulting = newWallet.free_balance;
-      movType = "withdraw_from_ai";
+      if (amount > (wallet.liquid_cash || 0)) return;
+      updates.wallet_balance = (wallet.wallet_balance || 0) + amount;
+      updates.liquid_cash    = (wallet.liquid_cash    || 0) - amount;
+      updates.ai_capital     = Math.max(0, (wallet.ai_capital || 0) - amount);
+      resulting = updates.wallet_balance;
     }
 
+    // FIX: pasar solo los campos que cambian, no el objeto completo
     await Promise.all([
-      base44.entities.Wallet.update(wallet.id, newWallet),
+      base44.entities.Wallet.update(wallet.id, updates),
       base44.entities.WalletMovement.create({
-        type: movType,
+        type:              action,
         amount,
         resulting_balance: resulting,
-        notes: ""
+        notes:             ""
       })
     ]);
 
@@ -123,12 +125,12 @@ export default function Wallet() {
     <div>
       <PageHeader title="Billetera Virtual" subtitle="Controla tu capital simulado" />
 
-      {/* 4 Metrics */}
+      {/* 4 Metrics — FIX: wallet_balance en lugar de free_balance */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <MetricCard label="Saldo Libre"           value={wallet?.free_balance} icon={WalletIcon}   color="#00ff88" delay={0}    />
-        <MetricCard label="Capital en la IA"       value={wallet?.ai_capital}  icon={TrendingUp}   color="#3b82f6" delay={0.05} />
-        <MetricCard label="Ganancias Retiradas"    value={totalWithdrawn}      icon={Banknote}     color="#fbbf24" delay={0.1}  />
-        <MetricCard label="Patrimonio Neto"        value={netWorth}            icon={PlusCircle}   color="#a78bfa" delay={0.15} />
+        <MetricCard label="Saldo Libre"        value={wallet?.wallet_balance} icon={WalletIcon}  color="#00ff88" delay={0}    />
+        <MetricCard label="Capital en la IA"   value={wallet?.ai_capital}    icon={TrendingUp}  color="#3b82f6" delay={0.05} />
+        <MetricCard label="Ganancias Retiradas" value={totalWithdrawn}        icon={Banknote}    color="#fbbf24" delay={0.1}  />
+        <MetricCard label="Patrimonio Neto"    value={netWorth}              icon={PlusCircle}  color="#a78bfa" delay={0.15} />
       </div>
 
       {/* Actions */}
@@ -141,9 +143,9 @@ export default function Wallet() {
         <h3 className="text-sm font-semibold text-slate-300 mb-3 font-mono uppercase tracking-wider">Acciones</h3>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { key: "deposit",          label: "Depositar",      color: "#00ff88", Icon: ArrowDownRight },
-            { key: "send_to_ai",       label: "Enviar a IA",    color: "#3b82f6", Icon: Send },
-            { key: "withdraw_from_ai", label: "Retirar de IA",  color: "#fbbf24", Icon: ArrowDownLeft }
+            { key: "deposit",          label: "Depositar",     color: "#00ff88", Icon: ArrowDownRight },
+            { key: "send_to_ai",       label: "Enviar a IA",   color: "#3b82f6", Icon: Send },
+            { key: "withdraw_from_ai", label: "Retirar de IA", color: "#fbbf24", Icon: ArrowDownLeft }
           ].map(({ key, label, color, Icon }) => (
             <button
               key={key}
@@ -216,7 +218,6 @@ export default function Wallet() {
         )}
       </motion.div>
 
-      {/* Action Panel Modal */}
       {activeAction && (
         <ActionPanel
           action={activeAction}
