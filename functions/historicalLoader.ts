@@ -9,27 +9,8 @@ const STOCK_LISTS = {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function insertBatch(base44, records) {
-  await Promise.all(records.map(r => base44.asServiceRole.entities.PriceHistory.create(r)));
-}
-
-async function insertWithRetry(base44, records) {
-  try {
-    await insertBatch(base44, records);
-  } catch (err) {
-    if (err.message?.includes("429") || err.status === 429) {
-      await delay(3000);
-      await insertBatch(base44, records);
-    } else {
-      throw err;
-    }
-  }
-}
-
-// FIX: headers más completos + retry para Yahoo
 async function fetchYahooHistory(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
-  
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(url, {
@@ -39,31 +20,24 @@ async function fetchYahooHistory(symbol) {
           "Accept-Language": "en-US,en;q=0.9"
         }
       });
-
       if (res.status === 429 || res.status === 503) {
-        console.warn(`Yahoo rate limit for ${symbol}, attempt ${attempt}, waiting...`);
         await delay(2000 * attempt);
         continue;
       }
-
-      if (!res.ok) throw new Error(`Yahoo Finance ${res.status} for ${symbol}`);
-
+      if (!res.ok) throw new Error(`Yahoo ${res.status} for ${symbol}`);
       const json = await res.json();
       const result = json?.chart?.result?.[0];
       if (!result) throw new Error(`No data from Yahoo for ${symbol}`);
-
       const timestamps = result.timestamp || [];
       const q = result.indicators?.quote?.[0] || {};
-
       return timestamps.map((ts, i) => ({
-        date: new Date(ts * 1000).toISOString().split("T")[0],
+        date:   new Date(ts * 1000).toISOString().split("T")[0],
         open:   q.open?.[i]   ?? null,
         high:   q.high?.[i]   ?? null,
         low:    q.low?.[i]    ?? null,
         close:  q.close?.[i]  ?? null,
         volume: q.volume?.[i] ?? null
       })).filter(d => d.close !== null);
-
     } catch (err) {
       if (attempt === 3) throw err;
       await delay(1000 * attempt);
@@ -85,7 +59,6 @@ Deno.serve(async (req) => {
     const riskLevel = config.risk_level || "moderate";
     const symbols = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
 
-    // FIX: sin parámetros posicionales incorrectos
     const existing = await base44.asServiceRole.entities.PriceHistory.list();
     const existingSet = new Set(existing.map(r => `${r.symbol}|${r.date}`));
 
@@ -97,33 +70,50 @@ Deno.serve(async (req) => {
         let inserted = 0;
         let skipped = 0;
 
-        const toInsert = [];
         for (const candle of candles) {
           const key = `${symbol}|${candle.date}`;
           if (existingSet.has(key)) { skipped++; continue; }
-          toInsert.push({
-            symbol,
-            date:   candle.date,
-            open:   candle.open,
-            high:   candle.high,
-            low:    candle.low,
-            close:  candle.close,
-            volume: candle.volume
-          });
-          existingSet.add(key);
-        }
 
-        const BATCH_SIZE = 10;
-        for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
-          const batch = toInsert.slice(i, i + BATCH_SIZE);
-          await insertWithRetry(base44, batch);
-          inserted += batch.length;
-          if (i + BATCH_SIZE < toInsert.length) await delay(500);
+          // FIX: insertar de una en una con delay entre cada registro
+          let success = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await base44.asServiceRole.entities.PriceHistory.create({
+                symbol,
+                date:   candle.date,
+                open:   candle.open,
+                high:   candle.high,
+                low:    candle.low,
+                close:  candle.close,
+                volume: candle.volume
+              });
+              existingSet.add(key);
+              inserted++;
+              success = true;
+              break;
+            } catch (err) {
+              if (err.message?.includes("429") || err.status === 429) {
+                // Rate limit — esperar más tiempo en cada intento
+                await delay(3000 * attempt);
+              } else {
+                throw err;
+              }
+            }
+          }
+
+          if (!success) {
+            console.warn(`Skipping ${symbol}|${candle.date} after 3 failed attempts`);
+          }
+
+          // FIX: 200ms entre cada inserción individual
+          await delay(200);
         }
 
         results.push({ symbol, inserted, skipped, total: candles.length });
         console.log(`${symbol}: ${inserted} inserted, ${skipped} skipped`);
-        await delay(1000);
+
+        // 2 segundos entre cada acción completa
+        await delay(2000);
 
       } catch (err) {
         console.error(`Failed for ${symbol}:`, err.message);
@@ -131,7 +121,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // FIX: guardar qué símbolos cargaron bien en UserConfig
     const loadedSymbols = results
       .filter(r => !r.error)
       .map(r => r.symbol)
