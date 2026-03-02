@@ -610,7 +610,7 @@ async function runAICycle(base44) {
   await base44.asServiceRole.entities.PerformanceSnapshot.create({
     timestamp: new Date().toISOString(),
     total_portfolio_value: totalPortfolio,
-    available_cash: wallet.liquid_cash || 0,
+    available_cash: finalWallet?.liquid_cash || 0,
     invested_capital: investedValue,
     total_pnl: totalPortfolio - initialCapital,
     total_pnl_pct: ((totalPortfolio - initialCapital) / initialCapital) * 100
