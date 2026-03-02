@@ -467,10 +467,10 @@ async function runAICycle(base44) {
   for (const holding of activeHoldings) {
     try {
       const [candleData, news, quote] = await Promise.all([
-        getCandles(holding.symbol),
-        getNews(holding.symbol),
-        getQuote(holding.symbol)
-      ]);
+          getCandles(holding.symbol, base44),
+          getNews(holding.symbol),
+          getQuote(holding.symbol)
+        ]);
 
       const closes = candleData?.c || [];
       const rsi = calcRSI(closes);
