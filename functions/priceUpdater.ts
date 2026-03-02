@@ -84,6 +84,12 @@ Deno.serve(async (req) => {
       try {
         if (!activeIds.has(holding.id)) continue;
 
+        const userEmail = holding.created_by;
+        const config = allConfigs.find(c => c.created_by === userEmail) || {};
+        const wallet = allWallets.find(w => w.created_by === userEmail);
+        const riskLevel = config.risk_level || "moderate";
+        const stopLossPct = STOP_LOSS[riskLevel] || 0.08;
+
         const quote = await getQuote(holding.symbol);
         const currentPrice = quote.price;
         if (!currentPrice) continue;
