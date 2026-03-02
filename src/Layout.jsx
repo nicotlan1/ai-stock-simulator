@@ -16,8 +16,6 @@ import {
 export default function Layout({ children, currentPageName }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Check if setup is needed
   const [setupDone, setSetupDone] = useState(null);
   const marketStatus = useMarketStatus();
 
@@ -42,7 +40,7 @@ export default function Layout({ children, currentPageName }) {
     const updateTitle = async () => {
       try {
         const [wallets, holdings] = await Promise.all([
-          base44.entities.Wallet.list("-created_date", 1),
+          base44.entities.Wallet.list(),
           base44.entities.Holding.list()
         ]);
         if (!wallets.length) {
@@ -75,7 +73,6 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [setupDone, currentPageName]);
 
-  // Don't show layout on setup page
   if (currentPageName === "Setup") {
     return <div className="min-h-screen bg-[#0a0e1a]">{children}</div>;
   }
@@ -90,7 +87,6 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-[#0a0e1a] flex">
-      {/* Mobile overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
@@ -98,7 +94,6 @@ export default function Layout({ children, currentPageName }) {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`
           fixed lg:sticky top-0 left-0 z-50 h-screen
@@ -108,7 +103,6 @@ export default function Layout({ children, currentPageName }) {
           ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
-        {/* Logo area */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-[#1a2240] flex-shrink-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00ff88] to-[#00cc6a] flex items-center justify-center flex-shrink-0">
             <Activity className="w-4 h-4 text-[#0a0e1a]" strokeWidth={3} />
@@ -121,12 +115,10 @@ export default function Layout({ children, currentPageName }) {
           )}
         </div>
 
-        {/* Nav */}
         <div className="flex-1 overflow-y-auto py-4">
           <SidebarNav currentPage={currentPageName} collapsed={collapsed} />
         </div>
 
-        {/* Collapse button - desktop only */}
         <div className="hidden lg:flex items-center justify-center h-12 border-t border-[#1a2240]">
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -136,7 +128,6 @@ export default function Layout({ children, currentPageName }) {
           </button>
         </div>
 
-        {/* Mobile close */}
         <button
           onClick={() => setMobileOpen(false)}
           className="lg:hidden absolute top-4 right-3 text-slate-400"
@@ -145,10 +136,8 @@ export default function Layout({ children, currentPageName }) {
         </button>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 min-w-0">
         <FinnhubBanner show={marketStatus.error} />
-        {/* Top bar mobile */}
         <div className="lg:hidden flex items-center gap-3 px-4 h-14 border-b border-[#1a2240] bg-[#0b1022] sticky top-0 z-30">
           <button onClick={() => setMobileOpen(true)} className="text-slate-400">
             <Menu className="w-5 h-5" />
