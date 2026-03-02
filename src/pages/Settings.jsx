@@ -109,15 +109,23 @@ export default function Settings() {
 
   const handleReset = async () => {
     setResetting(true);
+    const user = await base44.auth.me();
+    if (!user) {
+      console.error("No user logged in, cannot perform reset.");
+      setResetting(false);
+      setShowResetConfirm(false);
+      return;
+    }
+    
     await Promise.all([
-      base44.entities.UserConfig.list().then(rs => Promise.all(rs.map(r => base44.entities.UserConfig.delete(r.id)))),
-      base44.entities.Wallet.list().then(rs => Promise.all(rs.map(r => base44.entities.Wallet.delete(r.id)))),
-      base44.entities.Holding.list().then(rs => Promise.all(rs.map(r => base44.entities.Holding.delete(r.id)))),
-      base44.entities.Transaction.list("-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.Transaction.delete(r.id)))),
-      base44.entities.Alert.list("-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.Alert.delete(r.id)))),
-      base44.entities.PerformanceSnapshot.list("-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.PerformanceSnapshot.delete(r.id)))),
-      base44.entities.WalletMovement.list("-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.WalletMovement.delete(r.id)))),
-      base44.entities.SP500History.list("-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.SP500History.delete(r.id))))
+      base44.entities.UserConfig.list({ created_by: user.email }).then(rs => Promise.all(rs.map(r => base44.entities.UserConfig.delete(r.id)))),
+      base44.entities.Wallet.list({ created_by: user.email }).then(rs => Promise.all(rs.map(r => base44.entities.Wallet.delete(r.id)))),
+      base44.entities.Holding.list({ created_by: user.email }).then(rs => Promise.all(rs.map(r => base44.entities.Holding.delete(r.id)))),
+      base44.entities.Transaction.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.Transaction.delete(r.id)))),
+      base44.entities.Alert.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.Alert.delete(r.id)))),
+      base44.entities.PerformanceSnapshot.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.PerformanceSnapshot.delete(r.id)))),
+      base44.entities.WalletMovement.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.WalletMovement.delete(r.id)))),
+      base44.entities.SP500History.list({ created_by: user.email }, "-created_date", 500).then(rs => Promise.all(rs.map(r => base44.entities.SP500History.delete(r.id))))
     ]);
     localStorage.removeItem("ai_stock_setup_done");
     window.location.href = createPageUrl("Setup");
