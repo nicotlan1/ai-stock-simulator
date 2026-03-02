@@ -537,8 +537,8 @@ async function runAICycle(base44) {
         const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
 
         if (finalScore >= params.buyThreshold) {
-          const positionSize = totalAICapital * params.maxPositionPct;
-          const amountToInvest = Math.min(positionSize, investableCash);
+          const positionSize = freshTotalAICapital * params.maxPositionPct;
+          const amountToInvest = Math.min(positionSize, freshInvestableCash);
           if (amountToInvest < 1) continue;
 
           const shares = amountToInvest / quote.price;
