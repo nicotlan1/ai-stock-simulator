@@ -296,12 +296,12 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
       })
     ]);
 
+    // Reload wallet from DB for accurate balance on next iteration
+    const updatedWallet = (await base44.asServiceRole.entities.Wallet.list())[0];
     await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-      liquid_cash: Math.max(0, (wallet.liquid_cash || 0) - totalCost)
+      liquid_cash: Math.max(0, (updatedWallet.liquid_cash || 0) - totalCost)
     });
-
-    // Reload wallet liquid cash for next iteration
-    wallet.liquid_cash = Math.max(0, (wallet.liquid_cash || 0) - totalCost);
+    wallet.liquid_cash = Math.max(0, (updatedWallet.liquid_cash || 0) - totalCost);
     remainingCash -= totalCost;
     decisions.push({ action: "buy", symbol: c.symbol, score: c.finalScore, amount: totalCost });
   }
