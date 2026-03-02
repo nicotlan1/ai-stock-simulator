@@ -99,6 +99,14 @@ export default function Settings() {
     setShowChangeGoal(false);
   };
 
+  const handleLoadHistory = async () => {
+    setLoadingHistory(true);
+    setHistoryResult(null);
+    const res = await base44.functions.invoke("historicalLoader");
+    setHistoryResult(res.data);
+    setLoadingHistory(false);
+  };
+
   const handleReset = async () => {
     setResetting(true);
     await Promise.all([
