@@ -51,24 +51,18 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: true, reason: "Market closed" });
     }
 
-    const [configs, wallets, holdings] = await Promise.all([
+    const [allConfigs, allWallets, allHoldings] = await Promise.all([
       base44.asServiceRole.entities.UserConfig.list(),
       base44.asServiceRole.entities.Wallet.list(),
       base44.asServiceRole.entities.Holding.list()
     ]);
 
-    if (!holdings.length) {
+    if (!allHoldings.length) {
       return Response.json({ skipped: true, reason: "No holdings" });
     }
 
-    const config = configs[0] || {};
-    const wallet = wallets[0];
-    const riskLevel = config.risk_level || "moderate";
-    const stopLossPct = STOP_LOSS[riskLevel] || 0.08;
-
-    const activeIds = new Set(
-      (await base44.asServiceRole.entities.Holding.list()).map(h => h.id)
-    );
+    const activeIds = new Set(allHoldings.map(h => h.id));
+    const holdings = allHoldings; // iterate all holdings across all users
 
     const updated = [];
     const stopped = [];
