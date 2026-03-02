@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "candles_range") {
-      // Candles for different ranges — all use daily resolution (free plan)
+      // Use /stock/candle — returns empty array if not available on free plan
       const rangeMap = {
         "1D":  { resolution: "D", days: 2  },
         "5D":  { resolution: "D", days: 5  },
@@ -128,16 +128,36 @@ Deno.serve(async (req) => {
       const { resolution, days } = rangeMap[body.range] || rangeMap["1M"];
       const to = Math.floor(Date.now() / 1000);
       const from = to - days * 24 * 60 * 60;
-      const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}`);
-      if (data.s !== "ok") return Response.json({ candles: [] });
-      const candles = (data.t || []).map((t, i) => ({
-        time: t,
-        open: data.o[i],
-        high: data.h[i],
-        low: data.l[i],
-        close: data.c[i],
-        volume: data.v[i]
-      }));
+      let candles = [];
+      try {
+        const data = await finnhubGet(`/stock/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}`);
+        if (data.s === "ok" && data.t) {
+          candles = data.t.map((t, i) => ({
+            time: t,
+            open: data.o[i],
+            high: data.h[i],
+            low: data.l[i],
+            close: data.c[i],
+            volume: data.v[i]
+          }));
+        }
+      } catch {
+        // candles stays []
+      }
+      // Fallback: if no candles, build a single-point snapshot from current quote
+      if (candles.length === 0) {
+        const q = await finnhubGet(`/quote?symbol=${symbol}`);
+        if (q.c) {
+          candles = [{
+            time: Math.floor(Date.now() / 1000),
+            open: q.o ?? q.c,
+            high: q.h ?? q.c,
+            low: q.l ?? q.c,
+            close: q.c,
+            volume: 0
+          }];
+        }
+      }
       return Response.json({ candles });
     }
 
