@@ -447,7 +447,7 @@ async function runAICycleForUser(base44, userEmail) {
             symbol: holding.symbol,
             message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
             is_read: false,
-            created_by: userEmail
+            user_id: userEmail
           })
         ]);
 
@@ -680,15 +680,15 @@ async function runAICycleForUser(base44, userEmail) {
 // ─── Price updater (independent of AI cycle) ─────────────────────────────────
 
 async function updatePrices(base44) {
-  const [allHoldings, allConfigs, allWallets] = await Promise.all([
-    base44.asServiceRole.entities.Holding.list(),
-    base44.asServiceRole.entities.UserConfig.list(),
-    base44.asServiceRole.entities.Wallet.list()
-  ]);
-  if (!allHoldings.length) return { updated: 0, stopLosses: 0 };
+   const [allHoldings, allConfigs, allWallets] = await Promise.all([
+     base44.asServiceRole.entities.Holding.list(),
+     base44.asServiceRole.entities.UserConfig.list(),
+     base44.asServiceRole.entities.Wallet.list()
+   ]);
+   if (!allHoldings.length) return { updated: 0, stopLosses: 0 };
 
-  // Build per-user maps
-  const userEmails = [...new Set(allHoldings.map(h => h.created_by).filter(Boolean))];
+   // Build per-user maps
+   const userEmails = [...new Set(allHoldings.map(h => h.user_id || h.created_by).filter(Boolean))];
   const configByUser = {};
   const walletByUser = {};
   for (const email of userEmails) {
