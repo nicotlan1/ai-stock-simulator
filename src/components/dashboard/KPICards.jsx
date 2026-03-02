@@ -36,7 +36,13 @@ export default function KPICards({ wallet, config, holdings, onDeposit, onSendTo
   const totalPnl = netWorth - totalDeposited;
   const totalPnlPct = totalDeposited > 0 ? (totalPnl / totalDeposited) * 100 : 0;
   const goalAmount = config?.goal_amount || 0;
-  const progressPct = goalAmount > 0 ? Math.min(100, (netWorth / goalAmount) * 100) : 0;
+  const initialCapital = config?.initial_capital || 0;
+const currentAIValue = portfolioValue + (wallet?.liquid_cash || 0);
+const progressPct = (goalAmount > 0 && goalAmount > initialCapital)
+  ? Math.min(100, Math.max(0,
+      ((currentAIValue - initialCapital) / (goalAmount - initialCapital)) * 100
+    ))
+  : 0;
   const freeBalance = wallet?.free_balance || 0;
   const invested = wallet?.ai_capital || 0;
 
