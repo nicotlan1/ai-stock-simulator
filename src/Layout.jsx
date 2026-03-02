@@ -43,8 +43,14 @@ export default function Layout({ children, currentPageName }) {
         
         const done = userConfigs.length > 0 && userWallets.length > 0;
         setSetupDone(done);
+        
+        // Redirect to Setup only if setup is incomplete AND not already on Setup page
         if (!done && currentPageName !== "Setup") {
           navigate(createPageUrl("Setup"));
+        }
+        // Redirect to Dashboard if setup is complete AND on Setup page
+        if (done && currentPageName === "Setup") {
+          navigate(createPageUrl("Dashboard"));
         }
       } catch (err) {
         if (!cancelled) {
@@ -55,7 +61,7 @@ export default function Layout({ children, currentPageName }) {
 
     checkSetup();
     return () => { cancelled = true; };
-  }, []);
+  }, [currentPageName, navigate]);
 
   useEffect(() => {
     const updateTitle = async () => {
