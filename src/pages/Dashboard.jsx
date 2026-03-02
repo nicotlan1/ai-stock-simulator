@@ -7,6 +7,7 @@ import PositionsTable from "@/components/dashboard/PositionsTable";
 import PortfolioChart from "@/components/dashboard/PortfolioChart";
 import RecentAlerts from "@/components/dashboard/RecentAlerts";
 import ActionPanel from "@/components/wallet/ActionPanel";
+import SendToAIModal from "@/components/wallet/SendToAIModal";
 import MarketSummaryBar from "@/components/dashboard/MarketSummaryBar";
 import { getStocksForRisk } from "@/components/shared/useFinnhub";
 
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const [snapshots, setSnapshots]   = useState([]);
   const [alerts, setAlerts]         = useState([]);
   const [activeAction, setActiveAction] = useState(null);
+  const [sendToAIAmount, setSendToAIAmount] = useState(null);
   const [loading, setLoading]       = useState(true);
 
   const { open: marketOpen } = useMarketStatus();
@@ -59,23 +61,19 @@ export default function Dashboard() {
 
   const handleWalletAction = async (action, amount) => {
     if (!wallet) return;
+    
+    // send_to_ai ahora abre el modal en lugar de ejecutar directamente
+    if (action === "send_to_ai") {
+      setSendToAIAmount(amount);
+      return;
+    }
+
     const updates = {};
 
     if (action === "deposit") {
       // FIX: campos correctos del schema
       updates.free_balance = (wallet.free_balance || 0) + amount;
       updates.net_worth    = (wallet.net_worth    || 0) + amount;
-
-    } else if (action === "send_to_ai") {
-      if (amount > (wallet.free_balance || 0)) return;
-      updates.free_balance = (wallet.free_balance || 0) - amount;
-      updates.ai_capital   = (wallet.ai_capital   || 0) + amount;
-      updates.liquid_cash  = (wallet.liquid_cash  || 0) + amount;
-      if (config) {
-        await base44.entities.UserConfig.update(config.id, {
-          initial_investment_pending: true
-        });
-      }
 
     } else if (action === "withdraw_from_ai") {
       if (amount > (wallet.liquid_cash || 0)) return;
@@ -123,6 +121,19 @@ export default function Dashboard() {
           wallet={wallet}
           onConfirm={handleWalletAction}
           onClose={() => setActiveAction(null)}
+        />
+      )}
+      
+      {sendToAIAmount !== null && (
+        <SendToAIModal
+          wallet={wallet}
+          config={config}
+          amount={sendToAIAmount}
+          onClose={() => setSendToAIAmount(null)}
+          onSuccess={() => {
+            setSendToAIAmount(null);
+            loadData();
+          }}
         />
       )}
     </div>
