@@ -232,7 +232,7 @@ const STOCK_LISTS = {
 
 // ─── Initial deployment (first time or new funds) ────────────────────────────
 
-async function deployCapital(base44, config, wallet, params, stockList, riskLevel, mode) {
+async function deployCapital(base44, config, wallet, params, stockList, riskLevel, mode, userEmail) {
   const totalAICapital = wallet.ai_capital || 0;
   const liquidCash = wallet.liquid_cash || 0;
   const reserveFloor = totalAICapital * 0.05;
@@ -241,7 +241,8 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
   if (investableCash < 1) return [];
 
   const decisions = [];
-  const currentHoldings = await base44.asServiceRole.entities.Holding.list();
+  const allHoldingsNow = await base44.asServiceRole.entities.Holding.list();
+  const currentHoldings = allHoldingsNow.filter(h => h.created_by === userEmail);
   const currentPositions = currentHoldings.length;
   const ownedSymbols = new Set(currentHoldings.map(h => h.symbol));
   const candidates = stockList.filter(s => !ownedSymbols.has(s));
