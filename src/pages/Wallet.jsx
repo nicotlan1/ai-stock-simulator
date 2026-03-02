@@ -17,8 +17,7 @@ function fmt(n) {
 function MetricCard({ label, value, icon: Icon, color, delay }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
       className="card-terminal p-5 relative overflow-hidden"
     >
@@ -43,12 +42,11 @@ const TX_CONFIG = {
 };
 
 export default function Wallet() {
-  const [wallet, setWallet]           = useState(null);
-  const [movements, setMovements]     = useState([]);
+  const [wallet, setWallet]             = useState(null);
+  const [movements, setMovements]       = useState([]);
   const [activeAction, setActiveAction] = useState(null);
-  const [loading, setLoading]         = useState(true);
+  const [loading, setLoading]           = useState(true);
 
-  // FIX: .list() sin parámetros incorrectos, ordenar en JS
   const loadData = useCallback(async () => {
     const [wallets, movs] = await Promise.all([
       base44.entities.Wallet.list(),
@@ -69,9 +67,9 @@ export default function Wallet() {
     .filter(m => m.type === "withdraw")
     .reduce((acc, m) => acc + (m.amount || 0), 0);
 
-  // FIX: usar campos correctos del schema
-  const netWorth = wallet?.total_net_worth ||
-    ((wallet?.wallet_balance || 0) + (wallet?.ai_capital || 0));
+  // FIX: campos correctos del schema
+  const netWorth = wallet?.net_worth ||
+    ((wallet?.free_balance || 0) + (wallet?.ai_capital || 0));
 
   const handleConfirm = async (action, amount) => {
     if (!wallet) return;
@@ -79,26 +77,25 @@ export default function Wallet() {
     let resulting = 0;
 
     if (action === "deposit") {
-      updates.wallet_balance  = (wallet.wallet_balance  || 0) + amount;
-      updates.total_net_worth = (wallet.total_net_worth || 0) + amount;
-      resulting = updates.wallet_balance;
+      updates.free_balance = (wallet.free_balance || 0) + amount;
+      updates.net_worth    = (wallet.net_worth    || 0) + amount;
+      resulting = updates.free_balance;
 
     } else if (action === "send_to_ai") {
-      if (amount > (wallet.wallet_balance || 0)) return;
-      updates.wallet_balance = (wallet.wallet_balance || 0) - amount;
-      updates.ai_capital     = (wallet.ai_capital     || 0) + amount;
-      updates.liquid_cash    = (wallet.liquid_cash    || 0) + amount;
-      resulting = updates.wallet_balance;
+      if (amount > (wallet.free_balance || 0)) return;
+      updates.free_balance = (wallet.free_balance || 0) - amount;
+      updates.ai_capital   = (wallet.ai_capital   || 0) + amount;
+      updates.liquid_cash  = (wallet.liquid_cash  || 0) + amount;
+      resulting = updates.free_balance;
 
     } else if (action === "withdraw_from_ai") {
       if (amount > (wallet.liquid_cash || 0)) return;
-      updates.wallet_balance = (wallet.wallet_balance || 0) + amount;
-      updates.liquid_cash    = (wallet.liquid_cash    || 0) - amount;
-      updates.ai_capital     = Math.max(0, (wallet.ai_capital || 0) - amount);
-      resulting = updates.wallet_balance;
+      updates.free_balance = (wallet.free_balance || 0) + amount;
+      updates.liquid_cash  = (wallet.liquid_cash  || 0) - amount;
+      updates.ai_capital   = Math.max(0, (wallet.ai_capital || 0) - amount);
+      resulting = updates.free_balance;
     }
 
-    // FIX: pasar solo los campos que cambian, no el objeto completo
     await Promise.all([
       base44.entities.Wallet.update(wallet.id, updates),
       base44.entities.WalletMovement.create({
@@ -125,21 +122,16 @@ export default function Wallet() {
     <div>
       <PageHeader title="Billetera Virtual" subtitle="Controla tu capital simulado" />
 
-      {/* 4 Metrics — FIX: wallet_balance en lugar de free_balance */}
+      {/* FIX: free_balance en lugar de wallet_balance */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <MetricCard label="Saldo Libre"        value={wallet?.wallet_balance} icon={WalletIcon}  color="#00ff88" delay={0}    />
-        <MetricCard label="Capital en la IA"   value={wallet?.ai_capital}    icon={TrendingUp}  color="#3b82f6" delay={0.05} />
-        <MetricCard label="Ganancias Retiradas" value={totalWithdrawn}        icon={Banknote}    color="#fbbf24" delay={0.1}  />
-        <MetricCard label="Patrimonio Neto"    value={netWorth}              icon={PlusCircle}  color="#a78bfa" delay={0.15} />
+        <MetricCard label="Saldo Libre"         value={wallet?.free_balance} icon={WalletIcon}  color="#00ff88" delay={0}    />
+        <MetricCard label="Capital en la IA"    value={wallet?.ai_capital}   icon={TrendingUp}  color="#3b82f6" delay={0.05} />
+        <MetricCard label="Ganancias Retiradas" value={totalWithdrawn}       icon={Banknote}    color="#fbbf24" delay={0.1}  />
+        <MetricCard label="Patrimonio Neto"     value={netWorth}             icon={PlusCircle}  color="#a78bfa" delay={0.15} />
       </div>
 
-      {/* Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-        className="mb-6"
-      >
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }} className="mb-6">
         <h3 className="text-sm font-semibold text-slate-300 mb-3 font-mono uppercase tracking-wider">Acciones</h3>
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -147,11 +139,8 @@ export default function Wallet() {
             { key: "send_to_ai",       label: "Enviar a IA",   color: "#3b82f6", Icon: Send },
             { key: "withdraw_from_ai", label: "Retirar de IA", color: "#fbbf24", Icon: ArrowDownLeft }
           ].map(({ key, label, color, Icon }) => (
-            <button
-              key={key}
-              onClick={() => setActiveAction(key)}
-              className="card-terminal p-4 flex flex-col items-center gap-2 hover:border-slate-600 transition-all group"
-            >
+            <button key={key} onClick={() => setActiveAction(key)}
+              className="card-terminal p-4 flex flex-col items-center gap-2 hover:border-slate-600 transition-all group">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${color}12` }}>
                 <Icon className="w-5 h-5" style={{ color }} />
               </div>
@@ -161,17 +150,11 @@ export default function Wallet() {
         </div>
       </motion.div>
 
-      {/* Movements history */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.25 }}
-        className="card-terminal overflow-hidden"
-      >
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.25 }} className="card-terminal overflow-hidden">
         <div className="p-5 border-b border-[#1a2240]">
           <h3 className="text-sm font-semibold text-slate-200 font-mono uppercase tracking-wider">Historial de Movimientos</h3>
         </div>
-
         {movements.length === 0 ? (
           <div className="p-10 text-center text-slate-500 text-sm">Sin movimientos aún</div>
         ) : (
@@ -197,7 +180,8 @@ export default function Wallet() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${tx.color}15` }}>
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ background: `${tx.color}15` }}>
                             <TxIcon className="w-3.5 h-3.5" style={{ color: tx.color }} />
                           </div>
                           <span className="text-sm text-slate-300">{tx.label}</span>
