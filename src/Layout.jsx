@@ -104,6 +104,7 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Main */}
       <main className="flex-1 min-w-0">
+        <FinnhubBanner show={marketStatus.error} />
         {/* Top bar mobile */}
         <div className="lg:hidden flex items-center gap-3 px-4 h-14 border-b border-[#1a2240] bg-[#0b1022] sticky top-0 z-30">
           <button onClick={() => setMobileOpen(true)} className="text-slate-400">
