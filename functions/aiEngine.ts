@@ -95,9 +95,11 @@ function calcMACD(closes) {
   if (closes.length < 35) return null; // need enough data for stable EMAs + signal
   const ema12 = calcEMASeries(closes, 12);
   const ema26 = calcEMASeries(closes, 26);
-  // Align: ema26 is shorter, offset = 26 - 12 = 14
-  const offset = 26 - 12;
-  const macdLine = ema26.map((v, i) => ema12[i + offset] - v);
+  // ema12 has (n-11) points, ema26 has (n-25) points — align by shared tail length
+  const sharedLen = Math.min(ema12.length, ema26.length);
+  const macdLine = Array.from({ length: sharedLen }, (_, i) =>
+    ema12[ema12.length - sharedLen + i] - ema26[ema26.length - sharedLen + i]
+  );
   if (macdLine.length < 9) return null;
   const signalLine = calcEMASeries(macdLine, 9);
   // Last two points for crossover detection
