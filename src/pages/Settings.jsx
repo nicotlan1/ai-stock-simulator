@@ -222,6 +222,45 @@ export default function Settings() {
           </div>
         </motion.div>
 
+        {/* Historical Loader */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="card-terminal p-6">
+          <h3 className="text-sm font-semibold text-slate-200 mb-1">Historial de Precios</h3>
+          <p className="text-xs text-slate-500 mb-4">Carga 6 meses de datos históricos desde Yahoo Finance para mejorar el análisis técnico de la IA.</p>
+
+          <button
+            onClick={handleLoadHistory}
+            disabled={loadingHistory}
+            className="flex items-center gap-2 px-5 py-2.5 text-sm font-mono text-[#3b82f6] border border-[#3b82f6]/30 rounded-lg hover:bg-[#3b82f6]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Database className="w-4 h-4" />
+            {loadingHistory ? "Cargando historial..." : "Cargar historial inicial"}
+          </button>
+
+          {loadingHistory && (
+            <div className="mt-3 flex items-center gap-2 text-xs font-mono text-slate-500">
+              <div className="w-3 h-3 border border-[#3b82f6] border-t-transparent rounded-full animate-spin" />
+              Descargando datos de Yahoo Finance para todas las acciones...
+            </div>
+          )}
+
+          {historyResult && !loadingHistory && (
+            <div className="mt-3 p-3 rounded-lg bg-[#00ff88]/5 border border-[#00ff88]/20">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="w-4 h-4 text-[#00ff88]" />
+                <span className="text-xs font-mono text-[#00ff88] font-bold">Historial cargado exitosamente</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(historyResult.results || []).map(r => (
+                  <div key={r.symbol} className="text-xs font-mono text-slate-400">
+                    <span className="text-white">{r.symbol}</span>
+                    {r.error ? <span className="text-[#ff4757]"> Error</span> : <span className="text-slate-500"> +{r.inserted} registros</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.div>
+
         {/* Reset */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card-terminal p-6">
           <h3 className="text-sm font-semibold text-slate-200 mb-1">Zona de Peligro</h3>
