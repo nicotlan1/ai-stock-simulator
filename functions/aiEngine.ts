@@ -680,7 +680,7 @@ async function runAICycleForUser(base44, userEmail) {
   const allHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
   const investedValue = allHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
   const allFinalWallets = await base44.asServiceRole.entities.Wallet.list();
-  const finalWallet = allFinalWallets.find(w => w.created_by === userEmail) || allFinalWallets[0];
+  const finalWallet = allFinalWallets.find(w => w.created_by === userEmail || w.user_id === userEmail);
   const totalPortfolio = (finalWallet?.liquid_cash || 0) + investedValue;
   const initialCapital = config.initial_capital || totalPortfolio;
 
