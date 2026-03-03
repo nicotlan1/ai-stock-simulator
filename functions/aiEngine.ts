@@ -22,16 +22,12 @@ function isMarketOpen() {
 }
 
 async function getCandles(symbol, base44Client) {
-  // Primary: use PriceHistory entity (populated by historicalLoader)
   if (base44Client) {
     try {
       const rows = await base44Client.asServiceRole.entities.PriceHistory.filter(
-        { symbol },
-        "-date",
-        130
+        { symbol }, "-date", 130
       );
       if (rows && rows.length >= 35) {
-        // Sort oldest→newest for correct indicator calculation
         const sorted = rows.slice().reverse();
         console.log(`Using PriceHistory for ${symbol}: ${sorted.length} points`);
         return {
@@ -47,7 +43,6 @@ async function getCandles(symbol, base44Client) {
       console.warn(`PriceHistory error for ${symbol}:`, err.message);
     }
   }
-  // Fallback: Finnhub candles
   console.log(`Fallback to Finnhub for ${symbol}`);
   const to = Math.floor(Date.now() / 1000);
   const from = to - 35 * 24 * 60 * 60;
@@ -73,7 +68,6 @@ async function getQuote(symbol) {
 
 function calcRSI(closes, period = 14) {
   if (closes.length < period + 1) return null;
-  // Initial simple average over first 'period' changes
   let avgGain = 0, avgLoss = 0;
   for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
@@ -82,7 +76,6 @@ function calcRSI(closes, period = 14) {
   }
   avgGain /= period;
   avgLoss /= period;
-  // Wilder's smoothing for remaining periods
   for (let i = period + 1; i < closes.length; i++) {
     const diff = closes[i] - closes[i - 1];
     const gain = diff > 0 ? diff : 0;
@@ -95,20 +88,10 @@ function calcRSI(closes, period = 14) {
   return 100 - (100 / (1 + rs));
 }
 
-function calcEMA(data, period) {
-  const k = 2 / (period + 1);
-  let ema = data[0];
-  for (let i = 1; i < data.length; i++) {
-    ema = data[i] * k + ema * (1 - k);
-  }
-  return ema;
-}
-
 function calcEMASeries(data, period) {
   if (data.length < period) return [];
   const k = 2 / (period + 1);
   const result = [];
-  // Seed with simple average of first 'period' values
   let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
   result.push(ema);
   for (let i = period; i < data.length; i++) {
@@ -119,17 +102,15 @@ function calcEMASeries(data, period) {
 }
 
 function calcMACD(closes) {
-  if (closes.length < 35) return null; // need enough data for stable EMAs + signal
+  if (closes.length < 35) return null;
   const ema12 = calcEMASeries(closes, 12);
   const ema26 = calcEMASeries(closes, 26);
-  // ema12 has (n-11) points, ema26 has (n-25) points — align by shared tail length
   const sharedLen = Math.min(ema12.length, ema26.length);
   const macdLine = Array.from({ length: sharedLen }, (_, i) =>
     ema12[ema12.length - sharedLen + i] - ema26[ema26.length - sharedLen + i]
   );
   if (macdLine.length < 9) return null;
   const signalLine = calcEMASeries(macdLine, 9);
-  // Last two points for crossover detection
   const macdCurrent = macdLine[macdLine.length - 1];
   const macdPrev = macdLine[macdLine.length - 2];
   const signalCurrent = signalLine[signalLine.length - 1];
@@ -140,8 +121,7 @@ function calcMACD(closes) {
 }
 
 function scoreTechnical(rsi, macd, riskLevel) {
-  if (rsi === null) return 50; // neutral if no data
-
+  if (rsi === null) return 50;
   const thresholds = {
     conservative:     { rsiBuy: 35, rsiSell: 65 },
     moderate:         { rsiBuy: 40, rsiSell: 60 },
@@ -149,23 +129,15 @@ function scoreTechnical(rsi, macd, riskLevel) {
     ultra_aggressive: { rsiBuy: 48, rsiSell: 58 }
   };
   const t = thresholds[riskLevel] || thresholds.moderate;
-
   let score = 50;
-
-  // RSI component (0-100 → -25 to +25)
   if (rsi < t.rsiBuy) score += 25 * ((t.rsiBuy - rsi) / t.rsiBuy);
   else if (rsi > t.rsiSell) score -= 25 * ((rsi - t.rsiSell) / (100 - t.rsiSell));
-
-  // MACD component (crossover ±15, neutral = no change)
   if (macd) {
     if (macd.crossingUp) score += 15;
     else if (macd.crossingDown) score -= 15;
   }
-
   return Math.max(0, Math.min(100, score));
 }
-
-// ─── Momentum Analysis ────────────────────────────────────────────────────────
 
 function scoreMomentum(closes) {
   if (!closes || closes.length < 6) return 50;
@@ -173,7 +145,6 @@ function scoreMomentum(closes) {
   const fiveDaysAgo = closes[closes.length - 6];
   if (!fiveDaysAgo) return 50;
   const changePct = ((current - fiveDaysAgo) / fiveDaysAgo) * 100;
-
   if (changePct > 5) return 85;
   if (changePct > 2) return 65;
   if (changePct > -2) return 50;
@@ -181,11 +152,8 @@ function scoreMomentum(closes) {
   return 15;
 }
 
-// ─── Sentiment Analysis via LLM ───────────────────────────────────────────────
-
 async function scoreSentiment(base44, symbol, news) {
-  if (!news || news.length === 0) return 50;
-
+  if (!news || news.length === 0) return { score: 50, summary: "" };
   const headlines = news.map(n => n.headline).join("\n");
   const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
     prompt: `Analyze the sentiment of these financial news headlines for ${symbol}. 
@@ -195,10 +163,8 @@ Return a single sentiment score from 0 to 100 where:
 - 40-60 = neutral (mixed or unclear news)
 - 60-80 = positive (growth, partnerships, upgrades, beats)
 - 80-100 = very positive (record results, breakthroughs, major wins)
-
 Headlines:
 ${headlines}
-
 Respond ONLY with a JSON object: {"score": <number>, "summary": "<one sentence>"}`,
     response_json_schema: {
       type: "object",
@@ -208,7 +174,6 @@ Respond ONLY with a JSON object: {"score": <number>, "summary": "<one sentence>"
       }
     }
   });
-
   return { score: result.score ?? 50, summary: result.summary ?? "" };
 }
 
@@ -221,8 +186,6 @@ const RISK_PARAMS = {
   ultra_aggressive: { maxPositionPct: 0.50, maxPositions: 2,  stopLossPct: 0.18, analysisMinutes: 15, buyThreshold: 60, sellThreshold: 40 }
 };
 
-// ─── Stock universe ───────────────────────────────────────────────────────────
-
 const STOCK_LISTS = {
   conservative:     ["AAPL", "MSFT", "GOOGL", "AMZN", "JPM", "JNJ", "V", "PG"],
   moderate:         ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "AMD"],
@@ -230,24 +193,22 @@ const STOCK_LISTS = {
   ultra_aggressive: ["NVDA", "TSLA", "COIN", "PLTR", "MSTR", "SMCI", "AMD", "RIVN", "SOUN", "RKLB"]
 };
 
-// ─── Initial deployment (first time or new funds) ────────────────────────────
+// ─── Initial deployment ───────────────────────────────────────────────────────
 
 async function deployCapital(base44, config, wallet, params, stockList, riskLevel, mode, userEmail) {
   const totalAICapital = wallet.ai_capital || 0;
   const liquidCash = wallet.liquid_cash || 0;
   const reserveFloor = totalAICapital * 0.05;
   const investableCash = Math.max(0, liquidCash - reserveFloor);
-
   if (investableCash < 1) return [];
 
   const decisions = [];
-  const allHoldingsNow = await base44.asServiceRole.entities.Holding.list();
-   const currentHoldings = allHoldingsNow.filter(h => h.user_id === userEmail || h.created_by === userEmail);
-   const currentPositions = currentHoldings.length;
-   const ownedSymbols = new Set(currentHoldings.map(h => h.symbol));
-   const candidates = stockList.filter(s => !ownedSymbols.has(s));
+  const allHoldingsNow = await base44.asServiceRole.entities.Holding.filter({}, null, 500);
+  const currentHoldings = allHoldingsNow.filter(h => h.user_id === userEmail || h.created_by === userEmail);
+  const currentPositions = currentHoldings.length;
+  const ownedSymbols = new Set(currentHoldings.map(h => h.symbol));
+  const candidates = stockList.filter(s => !ownedSymbols.has(s));
 
-  // Score all candidates and pick the best ones
   const scored = [];
   for (const symbol of candidates) {
     try {
@@ -257,87 +218,67 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
         getQuote(symbol)
       ]);
       if (!candleData || !quote.price) continue;
-
       const closes = candleData.c;
       const rsi = calcRSI(closes);
       const macd = calcMACD(closes);
       const techScore = scoreTechnical(rsi, macd, riskLevel);
       const momentumScore = scoreMomentum(closes);
       const sentimentResult = await scoreSentiment(base44, symbol, news);
-      const sentimentScore = typeof sentimentResult === "object" ? sentimentResult.score : sentimentResult;
-      const sentimentSummary = sentimentResult.summary || "";
-      const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
-
-      scored.push({ symbol, quote, closes, rsi, techScore, momentumScore, sentimentScore, sentimentSummary, finalScore });
+      const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentResult.score * 0.25;
+      scored.push({ symbol, quote, closes, rsi, techScore, momentumScore, sentimentScore: sentimentResult.score, sentimentSummary: sentimentResult.summary, finalScore });
     } catch (err) {
       console.error(`Scoring failed for ${symbol}:`, err.message);
     }
   }
 
-  // Sort by score descending, take up to maxPositions slots
   scored.sort((a, b) => b.finalScore - a.finalScore);
   const slots = params.maxPositions - currentPositions;
   const selected = scored.slice(0, slots);
-
-  // Distribute capital proportionally among selected
   const totalScore = selected.reduce((s, c) => s + c.finalScore, 0);
 
-  let remainingCash = investableCash;
+  // Cache wallet balance locally — one update at the end
+  let cachedLiquidCash = liquidCash;
+
   for (const c of selected) {
     const proportion = totalScore > 0 ? c.finalScore / totalScore : 1 / selected.length;
-    const amountToInvest = Math.min(investableCash * proportion, remainingCash, totalAICapital * params.maxPositionPct);
+    const amountToInvest = Math.min(investableCash * proportion, cachedLiquidCash - reserveFloor, totalAICapital * params.maxPositionPct);
     if (amountToInvest < 1) continue;
 
     const shares = amountToInvest / c.quote.price;
     const totalCost = shares * c.quote.price;
-
     const modeLabel = mode === "initial" ? "despliegue inicial" : "nuevos fondos detectados";
 
     await Promise.all([
       base44.asServiceRole.entities.Transaction.create({
-         type: "buy",
-         symbol: c.symbol,
-         company_name: c.symbol,
-         shares,
-         price: c.quote.price,
-         total_amount: totalCost,
-         ai_reasoning: `Compra por ${modeLabel}. RSI: ${c.rsi?.toFixed(1) ?? "N/A"}. Sentimiento: ${c.sentimentSummary}. Puntajes — Técnico: ${c.techScore.toFixed(0)}/100, Momentum: ${c.momentumScore.toFixed(0)}/100, Sentimiento: ${c.sentimentScore.toFixed(0)}/100. Puntaje final: ${c.finalScore.toFixed(1)}. Invierto $${totalCost.toFixed(2)} (${(proportion * 100).toFixed(0)}% del capital disponible).`,
-         score_technical: Math.round(c.techScore),
-         score_fundamental: 0,
-         score_sentiment: Math.round(c.sentimentScore),
-         score_final: Math.round(c.finalScore),
-         executed_at: new Date().toISOString(),
-         user_id: userEmail
-       }),
+        type: "buy", symbol: c.symbol, company_name: c.symbol, shares,
+        price: c.quote.price, total_amount: totalCost,
+        ai_reasoning: `Compra por ${modeLabel}. RSI: ${c.rsi?.toFixed(1) ?? "N/A"}. Sentimiento: ${c.sentimentSummary}. Puntajes — Técnico: ${c.techScore.toFixed(0)}/100, Momentum: ${c.momentumScore.toFixed(0)}/100, Sentimiento: ${c.sentimentScore.toFixed(0)}/100. Puntaje final: ${c.finalScore.toFixed(1)}. Invierto $${totalCost.toFixed(2)} (${(proportion * 100).toFixed(0)}% del capital disponible).`,
+        score_technical: Math.round(c.techScore), score_fundamental: 0,
+        score_sentiment: Math.round(c.sentimentScore), score_final: Math.round(c.finalScore),
+        executed_at: new Date().toISOString(), user_id: userEmail
+      }),
       base44.asServiceRole.entities.Holding.create({
-       symbol: c.symbol,
-       company_name: c.symbol,
-       shares,
-       avg_buy_price: c.quote.price,
-       current_price: c.quote.price,
-       current_value: totalCost,
-       unrealized_pnl: 0,
-       unrealized_pnl_pct: 0,
-       user_id: userEmail
+        symbol: c.symbol, company_name: c.symbol, shares,
+        avg_buy_price: c.quote.price, current_price: c.quote.price,
+        current_value: totalCost, unrealized_pnl: 0, unrealized_pnl_pct: 0,
+        user_id: userEmail
       }),
       base44.asServiceRole.entities.Alert.create({
-        type: "buy",
-        symbol: c.symbol,
+        type: "buy", symbol: c.symbol,
         message: `📥 ${mode === "initial" ? "Despliegue inicial" : "Nuevos fondos"}: ${c.symbol} a $${c.quote.price.toFixed(2)} — ${shares.toFixed(4)} acciones ($${totalCost.toFixed(2)}). Score: ${c.finalScore.toFixed(0)}/100`,
-        is_read: false,
-        user_id: userEmail
+        is_read: false, user_id: userEmail
       })
     ]);
 
-    // Reload wallet from DB for accurate balance on next iteration
-    const allUpdatedWallets = await base44.asServiceRole.entities.Wallet.list();
-    const updatedWallet = allUpdatedWallets.find(w => w.created_by === userEmail) || allUpdatedWallets[0];
-    await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-      liquid_cash: Math.max(0, (updatedWallet.liquid_cash || 0) - totalCost)
-    });
-    wallet.liquid_cash = Math.max(0, (updatedWallet.liquid_cash || 0) - totalCost);
-    remainingCash -= totalCost;
+    cachedLiquidCash -= totalCost;
     decisions.push({ action: "buy", symbol: c.symbol, score: c.finalScore, amount: totalCost });
+  }
+
+  // Single wallet update at the end
+  if (decisions.length > 0) {
+    await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+      liquid_cash: Math.max(0, cachedLiquidCash)
+    });
   }
 
   return decisions;
@@ -345,145 +286,109 @@ async function deployCapital(base44, config, wallet, params, stockList, riskLeve
 
 // ─── Core AI cycle ────────────────────────────────────────────────────────────
 
-async function runAICycleForUser(base44, userEmail) {
-  // 1. Load config & wallet for this specific user
-  const allConfigs  = await base44.asServiceRole.entities.UserConfig.list();
-  const allWallets  = await base44.asServiceRole.entities.Wallet.list();
-  const allHoldings = await base44.asServiceRole.entities.Holding.list();
-
-  const configs  = allConfigs.filter(c => c.created_by === userEmail);
-  const wallets  = allWallets.filter(w => w.created_by === userEmail);
-  const holdings = allHoldings.filter(h => h.user_id === userEmail || h.created_by === userEmail);
+async function runAICycleForUser(base44, userEmail, sharedData) {
+  // 1. Use pre-loaded shared data (loaded once for all users in entry point)
+  const configs  = sharedData.allConfigs.filter(c => c.created_by === userEmail);
+  const wallets  = sharedData.allWallets.filter(w => w.created_by === userEmail);
+  const holdings = sharedData.allHoldings.filter(h => h.user_id === userEmail || h.created_by === userEmail);
 
   if (!configs.length || !wallets.length) {
     return { skipped: true, reason: "No config or wallet found" };
   }
 
   const config = configs[0];
-   const wallet = wallets[0];
-   const riskLevel = config.risk_level || "moderate";
-   const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
-   const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
+  const wallet = wallets[0];
+  const riskLevel = config.risk_level || "moderate";
+  const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
+  const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
 
-   // Market context from SP500History
-   const sp500History = await base44.asServiceRole.entities.SP500History.list();
-   const latestSpy = sp500History.sort((a, b) => 
-     new Date(b.timestamp) - new Date(a.timestamp)
-   )[0];
-   const spyChangeOrDefault = latestSpy?.spy_change_pct ?? 0;
-   let marketMode = "neutral";
-   if (spyChangeOrDefault < -2) marketMode = "bearish";
-   else if (spyChangeOrDefault > 2) marketMode = "bullish";
+  // 2. Market context — single record, already fetched
+  const spyChangeOrDefault = sharedData.spyChange;
+  const marketMode = sharedData.marketMode;
+  const adjustedBuyThreshold = marketMode === "bearish"
+    ? params.buyThreshold + 10
+    : marketMode === "bullish"
+    ? params.buyThreshold - 5
+    : params.buyThreshold;
+  const adjustedSellThreshold = marketMode === "bearish"
+    ? params.sellThreshold + 10
+    : params.sellThreshold;
+  const marketContext = `Contexto de mercado: SPY ${spyChangeOrDefault > 0 ? '+' : ''}${spyChangeOrDefault.toFixed(2)}% (modo ${marketMode}).`;
 
-   const adjustedBuyThreshold = marketMode === "bearish" 
-     ? params.buyThreshold + 10 
-     : marketMode === "bullish" 
-     ? params.buyThreshold - 5 
-     : params.buyThreshold;
-
-   const adjustedSellThreshold = marketMode === "bearish"
-     ? params.sellThreshold + 10
-     : params.sellThreshold;
-
-   const marketContext = `Contexto de mercado: SPY ${spyChangeOrDefault > 0 ? '+' : ''}${spyChangeOrDefault.toFixed(2)}% (modo ${marketMode}).`;
-
-  // 2. Check if market is open
+  // 3. Check if market is open
   if (!isMarketOpen()) {
     return { skipped: true, reason: "Market is closed", initial_pending: config.initial_investment_pending };
   }
 
-  // 3a. INITIAL DEPLOYMENT: if this is the first time with capital
+  // 4a. INITIAL DEPLOYMENT
   if (config.initial_investment_pending && (wallet.liquid_cash || 0) > 0) {
     const decisions = await deployCapital(base44, config, wallet, params, stockList, riskLevel, "initial", userEmail);
-
     await base44.asServiceRole.entities.UserConfig.update(config.id, {
       initial_investment_pending: false,
       last_ai_run: new Date().toISOString()
     });
-
     if (decisions.length > 0) {
       await base44.asServiceRole.entities.Alert.create({
         type: "info",
         message: `🚀 Capital inicial desplegado. La IA compró ${decisions.length} posición(es): ${decisions.map(d => d.symbol).join(", ")}.`,
-        is_read: false,
-        user_id: userEmail
+        is_read: false, user_id: userEmail
       });
     }
-
     return { success: true, mode: "initial_deployment", decisions };
   }
 
-  // 3b. Timing gate for regular cycles
+  // 4b. Timing gate
   const lastRun = config.last_ai_run ? new Date(config.last_ai_run) : null;
   const minutesSinceLastRun = lastRun ? (Date.now() - lastRun.getTime()) / 60000 : Infinity;
   if (minutesSinceLastRun < params.analysisMinutes) {
-   return { skipped: true, reason: `Only ${minutesSinceLastRun.toFixed(1)} min since last run, need ${params.analysisMinutes}` };
+    return { skipped: true, reason: `Only ${minutesSinceLastRun.toFixed(1)} min since last run, need ${params.analysisMinutes}` };
   }
 
-  console.log(`[AI CYCLE START] User: ${userEmail}, Last run: ${lastRun ? lastRun.toISOString() : "never"}, Minutes since: ${minutesSinceLastRun.toFixed(1)}, Risk level: ${riskLevel}`);
+  console.log(`[AI CYCLE START] User: ${userEmail}, Minutes since last run: ${minutesSinceLastRun.toFixed(1)}, Risk: ${riskLevel}, Market: ${marketMode}`);
 
-  // 4. Available capital
-  const totalAICapital = wallet.ai_capital || 0;
-  const liquidCash = wallet.liquid_cash || 0;
-  const reserveFloor = totalAICapital * 0.05; // 5% reserve
-  const investableCash = Math.max(0, liquidCash - reserveFloor);
+  // 5. Wallet cache — track balance locally, one DB write at the end
+  let cachedLiquidCash = wallet.liquid_cash || 0;
+  let cachedAICapital = wallet.ai_capital || 0;
+  const reserveFloor = cachedAICapital * 0.05;
 
   const decisions = [];
 
-  // 5. STOP-LOSS CHECK on existing holdings ─────────────────────────────────
-  const activeHoldingIds = new Set((await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail).map(h => h.id));
+  // 6. STOP-LOSS CHECK ───────────────────────────────────────────────────────
+  const activeHoldingIds = new Set(holdings.map(h => h.id));
   for (const holding of holdings) {
     try {
-      // Verify holding still exists before executing stop-loss (prevent double execution)
       if (!activeHoldingIds.has(holding.id)) continue;
-
       const quote = await getQuote(holding.symbol);
       const currentPrice = quote.price;
       const lossPct = (currentPrice - holding.avg_buy_price) / holding.avg_buy_price;
 
       if (lossPct <= -params.stopLossPct) {
-        // Execute stop-loss sell
         const totalValue = currentPrice * holding.shares;
         const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
 
         await Promise.all([
           base44.asServiceRole.entities.Transaction.create({
-            type: "sell",
-            symbol: holding.symbol,
+            type: "sell", symbol: holding.symbol,
             company_name: holding.company_name || holding.symbol,
-            shares: holding.shares,
-            price: currentPrice,
-            total_amount: totalValue,
-            realized_pnl: realizedPnl,
-            ai_reasoning: `STOP-LOSS activado. Precio actual $${currentPrice.toFixed(2)} representa una caída de ${(lossPct * 100).toFixed(2)}% desde el precio promedio de compra $${holding.avg_buy_price.toFixed(2)}. Límite de riesgo: -${(params.stopLossPct * 100).toFixed(0)}%.`,
-            score_technical: 0,
-            score_fundamental: 0,
-            score_sentiment: 0,
-            score_final: 0,
-            executed_at: new Date().toISOString(),
-            user_id: userEmail
+            shares: holding.shares, price: currentPrice,
+            total_amount: totalValue, realized_pnl: realizedPnl,
+            ai_reasoning: `STOP-LOSS activado. Precio actual $${currentPrice.toFixed(2)} representa una caída de ${(lossPct * 100).toFixed(2)}% desde precio promedio $${holding.avg_buy_price.toFixed(2)}. Límite de riesgo: -${(params.stopLossPct * 100).toFixed(0)}%.`,
+            score_technical: 0, score_fundamental: 0, score_sentiment: 0, score_final: 0,
+            executed_at: new Date().toISOString(), user_id: userEmail
           }),
           base44.asServiceRole.entities.Holding.delete(holding.id),
           base44.asServiceRole.entities.Alert.create({
-            type: "stop_loss",
-            symbol: holding.symbol,
+            type: "stop_loss", symbol: holding.symbol,
             message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
-            is_read: false,
-            user_id: userEmail
+            is_read: false, user_id: userEmail
           })
         ]);
 
-        // Return cash to liquid and adjust ai_capital
-        const allFreshWallets1 = await base44.asServiceRole.entities.Wallet.list();
-        const freshWallet = allFreshWallets1.find(w => w.created_by === userEmail) || allFreshWallets1[0];
-        await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-          liquid_cash: (freshWallet.liquid_cash || 0) + totalValue,
-          ai_capital: Math.max(0, (freshWallet.ai_capital || 0) + realizedPnl)
-        });
-
+        activeHoldingIds.delete(holding.id);
+        cachedLiquidCash += totalValue;
+        cachedAICapital = Math.max(0, cachedAICapital + realizedPnl);
         decisions.push({ action: "stop_loss", symbol: holding.symbol, price: currentPrice, pnl: realizedPnl });
       } else {
-        // Update current price on holding
         await base44.asServiceRole.entities.Holding.update(holding.id, {
           current_price: currentPrice,
           current_value: currentPrice * holding.shares,
@@ -496,31 +401,25 @@ async function runAICycleForUser(base44, userEmail) {
     }
   }
 
-  // Reload holdings after stop-loss executions
-  const activeHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
-  const holdingMap = {};
-  activeHoldings.forEach(h => { holdingMap[h.symbol] = h; });
+  // 7. Reload active holdings after stop-losses
+  const activeHoldings = holdings.filter(h => activeHoldingIds.has(h.id));
 
-  // 6. SELL ANALYSIS on current holdings ────────────────────────────────────
+  // 8. SELL ANALYSIS ─────────────────────────────────────────────────────────
   console.log(`[SELL ANALYSIS] Checking ${activeHoldings.length} holdings for sell signals`);
   for (const holding of activeHoldings) {
-   try {
+    try {
       const [candleData, news, quote] = await Promise.all([
-          getCandles(holding.symbol, base44),
-          getNews(holding.symbol),
-          getQuote(holding.symbol)
-        ]);
-
+        getCandles(holding.symbol, base44),
+        getNews(holding.symbol),
+        getQuote(holding.symbol)
+      ]);
       const closes = candleData?.c || [];
       const rsi = calcRSI(closes);
       const macd = calcMACD(closes);
       const techScore = scoreTechnical(rsi, macd, riskLevel);
       const momentumScore = scoreMomentum(closes);
       const sentimentResult = await scoreSentiment(base44, holding.symbol, news);
-      const sentimentScore = typeof sentimentResult === "object" ? sentimentResult.score : sentimentResult;
-      const sentimentSummary = sentimentResult.summary || "";
-
-      const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
+      const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentResult.score * 0.25;
 
       if (finalScore < adjustedSellThreshold) {
         const currentPrice = quote.price;
@@ -529,38 +428,25 @@ async function runAICycleForUser(base44, userEmail) {
 
         await Promise.all([
           base44.asServiceRole.entities.Transaction.create({
-            type: "sell",
-            symbol: holding.symbol,
+            type: "sell", symbol: holding.symbol,
             company_name: holding.company_name || holding.symbol,
-            shares: holding.shares,
-            price: currentPrice,
-            total_amount: totalValue,
-            realized_pnl: realizedPnl,
-            ai_reasoning: `Señal de venta detectada. RSI: ${rsi?.toFixed(1) ?? "N/A"} (alto = sobrecomprado). Momentum 5d: ${momentumScore < 50 ? "negativo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} cayó bajo el umbral de venta (${adjustedSellThreshold}). ${marketContext}`,
-            score_technical: Math.round(techScore),
-            score_fundamental: 0,
-            score_sentiment: Math.round(sentimentScore),
-            score_final: Math.round(finalScore),
-            executed_at: new Date().toISOString(),
-            user_id: userEmail
+            shares: holding.shares, price: currentPrice,
+            total_amount: totalValue, realized_pnl: realizedPnl,
+            ai_reasoning: `Señal de venta. RSI: ${rsi?.toFixed(1) ?? "N/A"}. Momentum: ${momentumScore < 50 ? "negativo" : "neutro"}. Sentimiento: ${sentimentResult.summary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentResult.score.toFixed(0)}/100. Score final ${finalScore.toFixed(1)} bajo umbral (${adjustedSellThreshold}). ${marketContext}`,
+            score_technical: Math.round(techScore), score_fundamental: 0,
+            score_sentiment: Math.round(sentimentResult.score), score_final: Math.round(finalScore),
+            executed_at: new Date().toISOString(), user_id: userEmail
           }),
           base44.asServiceRole.entities.Holding.delete(holding.id),
           base44.asServiceRole.entities.Alert.create({
-            type: "sell",
-            symbol: holding.symbol,
+            type: "sell", symbol: holding.symbol,
             message: `📤 Venta: ${holding.symbol} a $${currentPrice.toFixed(2)}. P&L: $${realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}. Score: ${finalScore.toFixed(0)}/100`,
-            is_read: false,
-            user_id: userEmail
+            is_read: false, user_id: userEmail
           })
         ]);
 
-        const allFreshWalletsSell = await base44.asServiceRole.entities.Wallet.list();
-        const freshWalletSell = allFreshWalletsSell.find(w => w.created_by === userEmail) || allFreshWalletsSell[0];
-        await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-          liquid_cash: (freshWalletSell.liquid_cash || 0) + totalValue,
-          ai_capital: Math.max(0, (freshWalletSell.ai_capital || 0) + realizedPnl)
-        });
-
+        cachedLiquidCash += totalValue;
+        cachedAICapital = Math.max(0, cachedAICapital + realizedPnl);
         decisions.push({ action: "sell", symbol: holding.symbol, score: finalScore, pnl: realizedPnl });
       }
     } catch (err) {
@@ -568,22 +454,16 @@ async function runAICycleForUser(base44, userEmail) {
     }
   }
 
-  // 7. BUY ANALYSIS on universe (only if under max positions) ───────────────
-  const currentHoldingsAfterSells = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
-  const currentPositions = currentHoldingsAfterSells.length;
+  // 9. BUY ANALYSIS ──────────────────────────────────────────────────────────
+  const soldSymbols = new Set(decisions.filter(d => d.action === "sell" || d.action === "stop_loss").map(d => d.symbol));
+  const remainingHoldings = activeHoldings.filter(h => !soldSymbols.has(h.symbol));
+  const currentPositions = remainingHoldings.length;
+  const freshInvestableCash = Math.max(0, cachedLiquidCash - reserveFloor);
 
-  // Reload wallet to reflect cash freed by sells in section 6
-  const allFreshWalletsForBuys = await base44.asServiceRole.entities.Wallet.list();
-  const freshWalletForBuys = allFreshWalletsForBuys.find(w => w.created_by === userEmail) || allFreshWalletsForBuys[0];
-  const freshLiquidCash = freshWalletForBuys?.liquid_cash || 0;
-  const freshTotalAICapital = freshWalletForBuys?.ai_capital || 0;
-  const freshReserveFloor = freshTotalAICapital * 0.05;
-  const freshInvestableCash = Math.max(0, freshLiquidCash - freshReserveFloor);
-
-  console.log(`[BUY ANALYSIS] Current positions: ${currentPositions}/${params.maxPositions}, Fresh investable cash: $${freshInvestableCash.toFixed(2)}`);
+  console.log(`[BUY ANALYSIS] Positions: ${currentPositions}/${params.maxPositions}, Investable cash: $${freshInvestableCash.toFixed(2)}, Market: ${marketMode}`);
 
   if (currentPositions < params.maxPositions && freshInvestableCash > 10) {
-    const ownedSymbols = new Set(currentHoldingsAfterSells.map(h => h.symbol));
+    const ownedSymbols = new Set(remainingHoldings.map(h => h.symbol));
     const candidates = stockList.filter(s => !ownedSymbols.has(s));
 
     for (const symbol of candidates) {
@@ -595,7 +475,6 @@ async function runAICycleForUser(base44, userEmail) {
           getNews(symbol),
           getQuote(symbol)
         ]);
-
         if (!candleData || !quote.price) continue;
 
         const closes = candleData.c;
@@ -604,13 +483,10 @@ async function runAICycleForUser(base44, userEmail) {
         const techScore = scoreTechnical(rsi, macd, riskLevel);
         const momentumScore = scoreMomentum(closes);
         const sentimentResult = await scoreSentiment(base44, symbol, news);
-        const sentimentScore = typeof sentimentResult === "object" ? sentimentResult.score : sentimentResult;
-        const sentimentSummary = sentimentResult.summary || "";
-
-        const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentScore * 0.25;
+        const finalScore = techScore * 0.40 + momentumScore * 0.35 + sentimentResult.score * 0.25;
 
         if (finalScore >= adjustedBuyThreshold) {
-          const positionSize = freshTotalAICapital * params.maxPositionPct;
+          const positionSize = cachedAICapital * params.maxPositionPct;
           const amountToInvest = Math.min(positionSize, freshInvestableCash);
           if (amountToInvest < 1) continue;
 
@@ -619,47 +495,27 @@ async function runAICycleForUser(base44, userEmail) {
 
           await Promise.all([
             base44.asServiceRole.entities.Transaction.create({
-              type: "buy",
-              symbol,
-              company_name: symbol,
-              shares,
-              price: quote.price,
-              total_amount: totalCost,
-              ai_reasoning: `Señal de compra detectada en ${symbol}. RSI: ${rsi?.toFixed(1) ?? "N/A"} (bajo = potencial de subida). Momentum 5d: ${momentumScore > 60 ? "positivo" : "neutro"}. Sentimiento noticias: ${sentimentSummary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentScore.toFixed(0)}/100. Puntaje final ${finalScore.toFixed(1)} superó el umbral de compra (${adjustedBuyThreshold}). Invierto $${totalCost.toFixed(2)} (${(params.maxPositionPct * 100).toFixed(0)}% del portafolio). ${marketContext}`,
-              score_technical: Math.round(techScore),
-              score_fundamental: 0,
-              score_sentiment: Math.round(sentimentScore),
-              score_final: Math.round(finalScore),
-              executed_at: new Date().toISOString(),
-              user_id: userEmail
+              type: "buy", symbol, company_name: symbol, shares,
+              price: quote.price, total_amount: totalCost,
+              ai_reasoning: `Señal de compra en ${symbol}. RSI: ${rsi?.toFixed(1) ?? "N/A"}. Momentum: ${momentumScore > 60 ? "positivo" : "neutro"}. Sentimiento: ${sentimentResult.summary}. Puntajes — Técnico: ${techScore.toFixed(0)}/100, Momentum: ${momentumScore.toFixed(0)}/100, Sentimiento: ${sentimentResult.score.toFixed(0)}/100. Score final ${finalScore.toFixed(1)} superó umbral (${adjustedBuyThreshold}). Invierto $${totalCost.toFixed(2)} (${(params.maxPositionPct * 100).toFixed(0)}% del portafolio). ${marketContext}`,
+              score_technical: Math.round(techScore), score_fundamental: 0,
+              score_sentiment: Math.round(sentimentResult.score), score_final: Math.round(finalScore),
+              executed_at: new Date().toISOString(), user_id: userEmail
             }),
             base44.asServiceRole.entities.Holding.create({
-              symbol,
-              company_name: symbol,
-              shares,
-              avg_buy_price: quote.price,
-              current_price: quote.price,
-              current_value: totalCost,
-              unrealized_pnl: 0,
-              unrealized_pnl_pct: 0,
+              symbol, company_name: symbol, shares,
+              avg_buy_price: quote.price, current_price: quote.price,
+              current_value: totalCost, unrealized_pnl: 0, unrealized_pnl_pct: 0,
               user_id: userEmail
             }),
             base44.asServiceRole.entities.Alert.create({
-              type: "buy",
-              symbol,
+              type: "buy", symbol,
               message: `📥 Compra: ${symbol} a $${quote.price.toFixed(2)} — ${shares.toFixed(4)} acciones ($${totalCost.toFixed(2)}). Score: ${finalScore.toFixed(0)}/100`,
-              is_read: false,
-              user_id: userEmail
+              is_read: false, user_id: userEmail
             })
           ]);
 
-          // Reload wallet from DB and deduct liquid cash
-          const allFreshWalletsBuy = await base44.asServiceRole.entities.Wallet.list();
-          const freshWalletBuy = allFreshWalletsBuy.find(w => w.created_by === userEmail) || allFreshWalletsBuy[0];
-          await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-            liquid_cash: Math.max(0, (freshWalletBuy.liquid_cash || 0) - totalCost)
-          });
-
+          cachedLiquidCash -= totalCost;
           decisions.push({ action: "buy", symbol, score: finalScore, amount: totalCost });
         }
       } catch (err) {
@@ -668,110 +524,103 @@ async function runAICycleForUser(base44, userEmail) {
     }
   }
 
-  // 8. Update last_ai_run timestamp
-  const nowISO = new Date().toISOString();
-  console.log(`[UPDATE TIMESTAMP] Setting last_ai_run to ${nowISO}`);
-  await base44.asServiceRole.entities.UserConfig.update(config.id, {
-    last_ai_run: nowISO
+  // 10. Single wallet update for all changes this cycle
+  await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+    liquid_cash: Math.max(0, cachedLiquidCash),
+    ai_capital: Math.max(0, cachedAICapital)
   });
-  console.log(`[UPDATE COMPLETE] last_ai_run updated successfully`);
 
-  // 9. Save performance snapshot
-  const allHoldings = (await base44.asServiceRole.entities.Holding.list()).filter(h => h.user_id === userEmail || h.created_by === userEmail);
-  const investedValue = allHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
-  const allFinalWallets = await base44.asServiceRole.entities.Wallet.list();
-  const finalWallet = allFinalWallets.find(w => w.created_by === userEmail || w.user_id === userEmail);
-  const totalPortfolio = (finalWallet?.liquid_cash || 0) + investedValue;
+  // 11. Update last_ai_run timestamp
+  const nowISO = new Date().toISOString();
+  await base44.asServiceRole.entities.UserConfig.update(config.id, { last_ai_run: nowISO });
+  console.log(`[UPDATE COMPLETE] last_ai_run updated to ${nowISO}`);
+
+  // 12. Performance snapshot
+  const finalHoldings = (await base44.asServiceRole.entities.Holding.filter({ user_id: userEmail }, null, 500));
+  const investedValue = finalHoldings.reduce((s, h) => s + (h.current_value || 0), 0);
+  const totalPortfolio = cachedLiquidCash + investedValue;
   const initialCapital = config.initial_capital || totalPortfolio;
 
   console.log(`[SNAPSHOT] Portfolio: $${totalPortfolio.toFixed(2)}, PnL: $${(totalPortfolio - initialCapital).toFixed(2)}`);
   await base44.asServiceRole.entities.PerformanceSnapshot.create({
-    timestamp: new Date().toISOString(),
+    timestamp: nowISO,
     total_portfolio_value: totalPortfolio,
-    available_cash: finalWallet?.liquid_cash || 0,
+    available_cash: cachedLiquidCash,
     invested_capital: investedValue,
     total_pnl: totalPortfolio - initialCapital,
     total_pnl_pct: ((totalPortfolio - initialCapital) / initialCapital) * 100,
     user_id: userEmail
   });
 
-  console.log(`[AI CYCLE END] Completed with ${decisions.length} decisions`);
-  return { success: true, decisions, positions: allHoldings.length };
+  console.log(`[AI CYCLE END] User: ${userEmail} — ${decisions.length} decisions`);
+  return { success: true, decisions, positions: finalHoldings.length };
 }
 
-// ─── Price updater (independent of AI cycle) ─────────────────────────────────
+// ─── Price updater ────────────────────────────────────────────────────────────
 
 async function updatePrices(base44) {
-   const [allHoldings, allConfigs, allWallets] = await Promise.all([
-     base44.asServiceRole.entities.Holding.list(),
-     base44.asServiceRole.entities.UserConfig.list(),
-     base44.asServiceRole.entities.Wallet.list()
-   ]);
-   if (!allHoldings.length) return { updated: 0, stopLosses: 0 };
+  const [allHoldings, allConfigs, allWallets] = await Promise.all([
+    base44.asServiceRole.entities.Holding.filter({}, null, 500),
+    base44.asServiceRole.entities.UserConfig.filter({}, null, 500),
+    base44.asServiceRole.entities.Wallet.filter({}, null, 500)
+  ]);
+  if (!allHoldings.length) return { updated: 0, stopLosses: 0 };
 
-   // Build per-user maps
-   const userEmails = [...new Set(allHoldings.map(h => h.user_id || h.created_by).filter(Boolean))];
+  const userEmails = [...new Set(allHoldings.map(h => h.user_id || h.created_by).filter(Boolean))];
   const configByUser = {};
   const walletByUser = {};
+  const walletCacheByUser = {};
+
   for (const email of userEmails) {
     configByUser[email] = allConfigs.find(c => c.created_by === email);
-    walletByUser[email] = allWallets.find(w => w.created_by === email);
+    const w = allWallets.find(w => w.created_by === email);
+    walletByUser[email] = w;
+    if (w) walletCacheByUser[email] = { liquid_cash: w.liquid_cash || 0, ai_capital: w.ai_capital || 0 };
   }
 
   let updated = 0, stopLosses = 0;
-
   const activePriceHoldingIds = new Set(allHoldings.map(h => h.id));
+
   for (const holding of allHoldings) {
     const userEmail = holding.user_id || holding.created_by;
     const config = configByUser[userEmail];
     const wallet = walletByUser[userEmail];
     const riskLevel = config?.risk_level || "moderate";
     const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
-    try {
-      // Verify holding still exists before executing stop-loss (prevent double execution with runAICycle)
-      if (!activePriceHoldingIds.has(holding.id)) continue;
 
+    try {
+      if (!activePriceHoldingIds.has(holding.id)) continue;
       const quote = await getQuote(holding.symbol);
       if (!quote.price) continue;
       const currentPrice = quote.price;
       const lossPct = (currentPrice - holding.avg_buy_price) / holding.avg_buy_price;
 
       if (lossPct <= -params.stopLossPct) {
-        // Execute stop-loss sell
         const totalValue = currentPrice * holding.shares;
         const realizedPnl = (currentPrice - holding.avg_buy_price) * holding.shares;
 
         await Promise.all([
           base44.asServiceRole.entities.Transaction.create({
-            type: "sell",
-            symbol: holding.symbol,
+            type: "sell", symbol: holding.symbol,
             company_name: holding.company_name || holding.symbol,
-            shares: holding.shares,
-            price: currentPrice,
-            total_amount: totalValue,
-            realized_pnl: realizedPnl,
+            shares: holding.shares, price: currentPrice,
+            total_amount: totalValue, realized_pnl: realizedPnl,
             ai_reasoning: `STOP-LOSS activado (actualización de precios). Precio $${currentPrice.toFixed(2)} representa ${(lossPct * 100).toFixed(2)}% desde $${holding.avg_buy_price.toFixed(2)}. Límite: -${(params.stopLossPct * 100).toFixed(0)}%.`,
             score_technical: 0, score_fundamental: 0, score_sentiment: 0, score_final: 0,
-            executed_at: new Date().toISOString(),
-            user_id: userEmail
+            executed_at: new Date().toISOString(), user_id: userEmail
           }),
           base44.asServiceRole.entities.Holding.delete(holding.id),
           base44.asServiceRole.entities.Alert.create({
-            type: "stop_loss",
-            symbol: holding.symbol,
+            type: "stop_loss", symbol: holding.symbol,
             message: `⛔ Stop-loss en ${holding.symbol}: vendido a $${currentPrice.toFixed(2)} (${(lossPct * 100).toFixed(2)}%). P&L: $${realizedPnl.toFixed(2)}`,
-            is_read: false,
-            user_id: userEmail
-            })
-            ]);
+            is_read: false, user_id: userEmail
+          })
+        ]);
 
-            if (wallet) {
-          const fwAll = await base44.asServiceRole.entities.Wallet.list();
-          const fw = fwAll.find(w => w.created_by === userEmail) || fwAll[0];
-          await base44.asServiceRole.entities.Wallet.update(wallet.id, {
-            liquid_cash: (fw.liquid_cash || 0) + totalValue,
-            ai_capital: Math.max(0, (fw.ai_capital || 0) + realizedPnl)
-          });
+        activePriceHoldingIds.delete(holding.id);
+        if (walletCacheByUser[userEmail]) {
+          walletCacheByUser[userEmail].liquid_cash += totalValue;
+          walletCacheByUser[userEmail].ai_capital = Math.max(0, walletCacheByUser[userEmail].ai_capital + realizedPnl);
         }
         stopLosses++;
       } else {
@@ -787,6 +636,19 @@ async function updatePrices(base44) {
       console.error(`Price update failed for ${holding.symbol}:`, err.message);
     }
   }
+
+  // Single wallet update per user at the end
+  for (const email of userEmails) {
+    const wallet = walletByUser[email];
+    const cache = walletCacheByUser[email];
+    if (wallet && cache) {
+      await base44.asServiceRole.entities.Wallet.update(wallet.id, {
+        liquid_cash: Math.max(0, cache.liquid_cash),
+        ai_capital: Math.max(0, cache.ai_capital)
+      });
+    }
+  }
+
   return { updated, stopLosses };
 }
 
@@ -802,12 +664,30 @@ Deno.serve(async (req) => {
       return Response.json(result);
     }
 
-    // Run AI cycle for all users that have a config + wallet
-    const [allConfigs, allWallets] = await Promise.all([
-      base44.asServiceRole.entities.UserConfig.list(),
-      base44.asServiceRole.entities.Wallet.list()
+    // Load shared data ONCE for all users
+    const [allConfigs, allWallets, allHoldings] = await Promise.all([
+      base44.asServiceRole.entities.UserConfig.filter({}, null, 500),
+      base44.asServiceRole.entities.Wallet.filter({}, null, 500),
+      base44.asServiceRole.entities.Holding.filter({}, null, 500)
     ]);
 
+    // Load SPY context ONCE
+    let spyChange = 0;
+    let marketMode = "neutral";
+    try {
+      const spyRecords = await base44.asServiceRole.entities.SP500History.filter({}, "-timestamp", 1);
+      spyChange = spyRecords[0]?.spy_change_pct ?? 0;
+      if (spyChange < -2) marketMode = "bearish";
+      else if (spyChange > 2) marketMode = "bullish";
+    } catch (e) {
+      console.warn("SP500History unavailable, using neutral market");
+    }
+
+    console.log(`[ENGINE START] Market mode: ${marketMode} (SPY ${spyChange > 0 ? '+' : ''}${spyChange.toFixed(2)}%)`);
+
+    const sharedData = { allConfigs, allWallets, allHoldings, spyChange, marketMode };
+
+    // Find users that have both config and wallet
     const userEmails = [...new Set(
       allConfigs
         .filter(c => c.created_by && allWallets.some(w => w.created_by === c.created_by))
@@ -818,10 +698,12 @@ Deno.serve(async (req) => {
       return Response.json({ skipped: true, reason: "No users with config + wallet" });
     }
 
+    console.log(`[ENGINE START] Processing ${userEmails.length} user(s)`);
+
     const results = [];
     for (const email of userEmails) {
       try {
-        const result = await runAICycleForUser(base44, email);
+        const result = await runAICycleForUser(base44, email, sharedData);
         results.push({ user: email, ...result });
       } catch (err) {
         console.error(`AI cycle failed for ${email}:`, err.message);
