@@ -16,14 +16,16 @@ export default function MarketSummaryBar({ stocks }) {
 
   useEffect(() => {
     const load = async () => {
-      const [idxData, qData] = await Promise.all([
+      const [idxResult, qResult] = await Promise.allSettled([
         callFinnhub("indices"),
         stocks?.length ? callFinnhub("quotes", { symbols: stocks }) : Promise.resolve({ quotes: [] })
       ]);
-      setIndices(idxData.indices || []);
-      const map = {};
-      (qData.quotes || []).forEach(q => { map[q.symbol] = q; });
-      setQuotes(map);
+      if (idxResult.status === "fulfilled") setIndices(idxResult.value?.indices || []);
+      if (qResult.status === "fulfilled") {
+        const map = {};
+        (qResult.value?.quotes || []).forEach(q => { map[q.symbol] = q; });
+        setQuotes(map);
+      }
       setLoading(false);
     };
     load();
