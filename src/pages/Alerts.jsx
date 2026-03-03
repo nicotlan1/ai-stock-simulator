@@ -17,9 +17,8 @@ const TYPE_STYLES = {
 
 function timeAgo(d) {
   const diff = (Date.now() - new Date(d)) / 1000;
-  if (diff < 60) return `Hace ${Math.floor(diff)}s`;
   if (diff < 3600) return `Hace ${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `Hace ${Math.floor(diff / 3600)}h`;
+  if (diff < 172800) return `Hace ${Math.floor(diff / 3600)}h`;
   return `Hace ${Math.floor(diff / 86400)}d`;
 }
 
