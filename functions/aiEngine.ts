@@ -573,11 +573,14 @@ async function runAICycleForUser(base44, userEmail, sharedData) {
 // ─── Price updater ────────────────────────────────────────────────────────────
 
 async function updatePrices(base44) {
-  const [allHoldings, allConfigs, allWallets] = await Promise.all([
+  const [allHoldings, allConfigs, allWallets, allStrategies] = await Promise.all([
     base44.asServiceRole.entities.Holding.filter({}, null, 500),
     base44.asServiceRole.entities.UserConfig.filter({}, null, 500),
-    base44.asServiceRole.entities.Wallet.filter({}, null, 500)
+    base44.asServiceRole.entities.Wallet.filter({}, null, 500),
+    base44.asServiceRole.entities.AIStrategy.filter({}, null, 20)
   ]);
+  const strategyByRisk = {};
+  for (const s of allStrategies) { if (s.risk_level) strategyByRisk[s.risk_level] = s; }
   if (!allHoldings.length) return { updated: 0, stopLosses: 0 };
 
   const userEmails = [...new Set(allHoldings.map(h => h.user_id || h.created_by).filter(Boolean))];
