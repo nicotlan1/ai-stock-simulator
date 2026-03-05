@@ -312,8 +312,9 @@ async function runAICycleForUser(base44, userEmail, sharedData) {
   const config = configs[0];
   const wallet = wallets[0];
   const riskLevel = config.risk_level || "moderate";
-  const params = RISK_PARAMS[riskLevel] || RISK_PARAMS.moderate;
-  const stockList = STOCK_LISTS[riskLevel] || STOCK_LISTS.moderate;
+  const strategy = sharedData.strategyByRisk[riskLevel] || null;
+  const params = buildParamsFromStrategy(strategy, riskLevel);
+  const stockList = DEFAULT_STOCK_LISTS[riskLevel] || DEFAULT_STOCK_LISTS.moderate;
 
   // 2. Market context — single record, already fetched
   const spyChangeOrDefault = sharedData.spyChange;
