@@ -177,21 +177,34 @@ Respond ONLY with a JSON object: {"score": <number>, "summary": "<one sentence>"
   return { score: result.score ?? 50, summary: result.summary ?? "" };
 }
 
-// ─── Risk profile parameters ──────────────────────────────────────────────────
+// ─── Risk profile parameters (fallback hardcoded defaults) ────────────────────
 
-const RISK_PARAMS = {
+const DEFAULT_RISK_PARAMS = {
   conservative:     { maxPositionPct: 0.15, maxPositions: 7,  stopLossPct: 0.04, analysisMinutes: 60, buyThreshold: 68, sellThreshold: 32 },
   moderate:         { maxPositionPct: 0.25, maxPositions: 5,  stopLossPct: 0.08, analysisMinutes: 30, buyThreshold: 65, sellThreshold: 35 },
   aggressive:       { maxPositionPct: 0.35, maxPositions: 3,  stopLossPct: 0.12, analysisMinutes: 20, buyThreshold: 62, sellThreshold: 38 },
   ultra_aggressive: { maxPositionPct: 0.50, maxPositions: 2,  stopLossPct: 0.18, analysisMinutes: 15, buyThreshold: 60, sellThreshold: 40 }
 };
 
-const STOCK_LISTS = {
+const DEFAULT_STOCK_LISTS = {
   conservative:     ["AAPL", "MSFT", "GOOGL", "AMZN", "JPM", "JNJ", "V", "PG"],
   moderate:         ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "AMD"],
   aggressive:       ["NVDA", "TSLA", "AMD", "COIN", "PLTR", "MSTR", "SMCI", "META", "AMZN", "MSFT"],
   ultra_aggressive: ["NVDA", "TSLA", "COIN", "PLTR", "MSTR", "SMCI", "AMD", "RIVN", "SOUN", "RKLB"]
 };
+
+function buildParamsFromStrategy(strategy, riskLevel) {
+  const defaults = DEFAULT_RISK_PARAMS[riskLevel] || DEFAULT_RISK_PARAMS.moderate;
+  if (!strategy) return defaults;
+  return {
+    maxPositionPct:   (strategy.max_position_pct   != null ? strategy.max_position_pct / 100   : defaults.maxPositionPct),
+    maxPositions:     (strategy.max_positions       != null ? strategy.max_positions             : defaults.maxPositions),
+    stopLossPct:      (strategy.stop_loss_pct       != null ? strategy.stop_loss_pct / 100       : defaults.stopLossPct),
+    analysisMinutes:  (strategy.analysis_frequency_hours != null ? strategy.analysis_frequency_hours * 60 : defaults.analysisMinutes),
+    buyThreshold:     (strategy.rsi_buy_threshold   != null ? strategy.rsi_buy_threshold         : defaults.buyThreshold),
+    sellThreshold:    (strategy.rsi_sell_threshold  != null ? strategy.rsi_sell_threshold        : defaults.sellThreshold),
+  };
+}
 
 // ─── Initial deployment ───────────────────────────────────────────────────────
 
