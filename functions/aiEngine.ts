@@ -706,7 +706,7 @@ Deno.serve(async (req) => {
 
     console.log(`[ENGINE START] Market mode: ${marketMode} (SPY ${spyChange > 0 ? '+' : ''}${spyChange.toFixed(2)}%)`);
 
-    const sharedData = { allConfigs, allWallets, allHoldings, spyChange, marketMode };
+    const sharedData = { allConfigs, allWallets, allHoldings, spyChange, marketMode, strategyByRisk };
 
     // Find users that have both config and wallet
     const userEmails = [...new Set(
