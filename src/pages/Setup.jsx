@@ -48,21 +48,37 @@ export default function Setup() {
   const canGoStep2 = aiNum >= 1 && aiNum <= totalNum;
   const canGoStep3 = goalNum >= aiNum * 1.1 && deadlineNum >= 1;
 
+  const DEFAULT_STRATEGY_PARAMS = {
+    conservative: { max_position_pct: 15, max_positions: 7, stop_loss_pct: 4,  rsi_buy_threshold: 35, rsi_sell_threshold: 65, analysis_frequency_hours: 1 },
+    moderate:     { max_position_pct: 25, max_positions: 5, stop_loss_pct: 8,  rsi_buy_threshold: 40, rsi_sell_threshold: 60, analysis_frequency_hours: 0.5 },
+    aggressive:   { max_position_pct: 35, max_positions: 3, stop_loss_pct: 12, rsi_buy_threshold: 45, rsi_sell_threshold: 55, analysis_frequency_hours: 0.33 },
+  };
+
   const handleConfirm = async () => {
     setSaving(true);
     try {
       const today = new Date().toISOString().split("T")[0];
+      const finalRiskLevel = riskProfile.level === "ultra_aggressive" ? "aggressive" : riskProfile.level;
 
       await base44.entities.UserConfig.create({
         goal_amount:                goalNum,
         initial_capital:            aiNum,
         deadline_months:            deadlineMonths,
         required_monthly_return:    requiredMonthlyReturn,
-        risk_level:                 riskProfile.level,
+        risk_level:                 finalRiskLevel,
         estimated_probability:      riskProfile.prob,
         start_date:                 today,
         initial_investment_pending: true
       });
+
+      // Ensure AIStrategy exists for this risk level
+      const strategies = await base44.entities.AIStrategy.filter({ risk_level: finalRiskLevel });
+      if (strategies.length === 0) {
+        await base44.entities.AIStrategy.create({
+          risk_level: finalRiskLevel,
+          ...DEFAULT_STRATEGY_PARAMS[finalRiskLevel]
+        });
+      }
 
       await base44.entities.Wallet.create({
         free_balance: reserveNum,
