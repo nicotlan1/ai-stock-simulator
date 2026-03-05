@@ -682,11 +682,15 @@ Deno.serve(async (req) => {
     }
 
     // Load shared data ONCE for all users
-    const [allConfigs, allWallets, allHoldings] = await Promise.all([
+    const [allConfigs, allWallets, allHoldings, allStrategies] = await Promise.all([
       base44.asServiceRole.entities.UserConfig.filter({}, null, 500),
       base44.asServiceRole.entities.Wallet.filter({}, null, 500),
-      base44.asServiceRole.entities.Holding.filter({}, null, 500)
+      base44.asServiceRole.entities.Holding.filter({}, null, 500),
+      base44.asServiceRole.entities.AIStrategy.filter({}, null, 20)
     ]);
+    const strategyByRisk = {};
+    for (const s of allStrategies) { if (s.risk_level) strategyByRisk[s.risk_level] = s; }
+    console.log(`[ENGINE START] AIStrategy records loaded: ${allStrategies.length}`);
 
     // Load SPY context ONCE
     let spyChange = 0;
