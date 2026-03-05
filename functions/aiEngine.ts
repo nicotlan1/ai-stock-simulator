@@ -603,7 +603,7 @@ async function updatePrices(base44) {
     const config = configByUser[userEmail];
     const wallet = walletByUser[userEmail];
     const riskLevel = config?.risk_level || "moderate";
-    const params = buildParamsFromStrategy(null, riskLevel); // updatePrices uses defaults (no sharedData available)
+    const params = buildParamsFromStrategy(strategyByRisk[riskLevel] || null, riskLevel);
 
     try {
       if (!activePriceHoldingIds.has(holding.id)) continue;
